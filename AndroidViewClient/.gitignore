@@ -1,0 +1,25 @@
+# Compiled classes #
+####################
+*$py.class
+*.pyc
+
+# Mac files #
+#############
+.DS_Store
+
+# vi files #
+############
+.*.swp
+
+# other files #
+###############
+*~
+build/
+dist/
+**/*.egg-info/
+
+# idea #
+########
+*.iws
+**/.idea/workspace.xml
+**/.idea/tasks.xml

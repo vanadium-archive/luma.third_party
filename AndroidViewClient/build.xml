@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="Culebra" default="deprecated">
+	<property file="ant.properties" />
+	<loadproperties srcFile="project.properties" />
+
+    <target name="deprecated">
+        <echo message="NOTICE:" />
+		<echo message="Jar file and monkeyrunner use are deprecated as of AndroidViewClient >= 4.0.0" />
+    </target>
+
+	<property name="versionRE" value="^\s*__version__\s*=\s*'(.*)'\s*$" />
+	<loadfile srcfile="src/com/dtmilano/android/viewclient.py"
+		property="avc.version">
+		<filterchain>
+			<linecontainsregexp>
+				<regexp pattern="${versionRE}" />
+			</linecontainsregexp>
+			<tokenfilter>
+				<replaceregex pattern="${versionRE}" replace="\1" />
+			</tokenfilter>
+			<striplinebreaks />
+		</filterchain>
+	</loadfile>
+
+	<property name="avc.jar" value="bin/${avc.jarname}-${avc.version}.jar" />
+	<target name="jar" depends="compile">
+		<echo message="Creating ${avc.jarname} ${avc.version} jar ..." />
+		<jar destfile="${avc.jar}">
+			<fileset dir="src/" excludes="**/*.java" />
+			<fileset dir="." includes="tools/*" />
+			<fileset dir="bin/classes" />
+			<manifest>
+				<attribute name="Main-Class"
+					value="com.dtmilano.android.viewclient.ViewClient" />
+			</manifest>
+		</jar>
+	</target>
+
+	<target name="clean">
+		<delete dir="bin" />
+	</target>
+
+	<target name="compile">
+		<mkdir dir="bin/classes" />
+		<javac srcdir="src" destdir="bin/classes" />
+	</target>
+
+    <target name="install" depends="jar,doc-jar">
+        <mkdir dir="${gdrive.bin.dest.dir}" />
+        <copy file="${avc.jar}" todir="${gdrive.bin.dest.dir}" />
+        <mkdir dir="${gdrive.doc.dest.dir}" />
+        <copy file="${avc.doc.jar}" todir="${gdrive.doc.dest.dir}" />
+    </target>
+
+    <target name="doc" >
+        <mkdir dir="doc" />
+        <exec executable="epydoc">
+            <arg value="--config=viewclient.epydoc" />
+        </exec>
+    </target>
+
+	<property name="avc.doc.jar" value="bin/${avc.doc.jarname}-${avc.version}.jar" />
+    <target name="doc-jar" depends="doc">
+		<echo message="Creating ${avc.doc.jarname} ${avc.version} jar ..." />
+		<jar destfile="${avc.doc.jar}">
+            <fileset dir="doc/" />
+        </jar>
+    </target>
+</project>
