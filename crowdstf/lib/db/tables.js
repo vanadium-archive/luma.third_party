@@ -54,4 +54,7 @@ module.exports = {
 , logs: {
     primaryKey: 'id'
   }
+, deviceEvents: {
+    primaryKey: 'id'
+  }
 }

@@ -1,3 +1,5 @@
+var imageFile = require('../screen/imagefile')
+
 module.exports = function ControlServiceFactory(
   $upload
 , $http
@@ -6,12 +8,22 @@ module.exports = function ControlServiceFactory(
 , $rootScope
 , gettext
 , KeycodesMapped
+, UserService
 ) {
   var controlService = {
   }
 
   function ControlService(target, channel) {
     function sendOneWay(action, data) {
+      data.imgId = imageFile.getNextImgId();
+      data.serial = imageFile.getCurrentDeviceSerial();
+      data.timestamp = new Date().getTime();
+      data.wsId = socket.getWsId();
+      data.userEmail = UserService.currentUser.email;
+      data.userGroup = UserService.currentUser.group;
+      data.userIP = UserService.currentUser.ip;
+      data.userLastLogin = UserService.currentUser.lastLoggedInAt;
+      data.userName = UserService.currentUser.name;
       socket.emit(action, channel, data)
     }
 

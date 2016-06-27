@@ -225,8 +225,7 @@ module.exports = syrup.serial()
           }
 
           conn.on('authenticated', function() {
-            screenStream.updateProjection(
-              options.vncInitialSize[0], options.vncInitialSize[1])
+            screenStream.setStaticProjection()
             screenStream.broadcastSet.insert(id, {
               onStart: vncStartListener
             , onFrame: vncFrameListener

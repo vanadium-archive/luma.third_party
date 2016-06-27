@@ -1,6 +1,7 @@
 var _ = require('lodash')
 var rotator = require('./rotator')
 var ImagePool = require('./imagepool')
+var imageFile = require('./imagefile')
 
 module.exports = function DeviceScreenDirective(
   $document
@@ -9,6 +10,7 @@ module.exports = function DeviceScreenDirective(
 , PageVisibilityService
 , $timeout
 , $window
+, socket
 ) {
   return {
     restrict: 'E'
@@ -340,7 +342,26 @@ module.exports = function DeviceScreenDirective(
               }
             }
             else if (/^start /.test(message.data)) {
-              applyQuirks(JSON.parse(message.data.substr('start '.length)))
+              var banner = {};
+
+              try{
+                banner = JSON.parse(message.data.substr('start '.length));
+              }catch(err){
+                // This shouldn't happen, but if it does, return early
+                // to avoid breaking the message queue and log the error
+                console.error('Invalid JSON in response', err.stack)
+                return;
+              }
+
+              var wsId = banner.wsId;
+              socket.setWSId(wsId);
+
+              applyQuirks(banner)
+            }
+            else if (/^nextImgId /.test(message.data)) {
+              var nextImgId = message.data.substr('nextImgId '.length);
+              imageFile.setNextImgId(nextImgId);
+              imageFile.setCurrentDeviceSerial(device.serial)
             }
             else if (message.data === 'secure_on') {
               scope.$apply(function() {

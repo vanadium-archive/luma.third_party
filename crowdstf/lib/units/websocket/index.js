@@ -22,6 +22,10 @@ var cookieSession = require('./middleware/cookie-session')
 var ip = require('./middleware/remote-ip')
 var auth = require('./middleware/auth')
 var jwtutil = require('../../util/jwtutil')
+var DeviceEventStore = require('./deviceeventstore')
+var deviceEventStore = new DeviceEventStore();
+var layoutCaptureService = require('./layoutcaptureservice')
+
 
 module.exports = function(options) {
   var log = logger.createLogger('websocket')
@@ -441,110 +445,158 @@ module.exports = function(options) {
         })
         // Touch events
         .on('input.touchDown', function(channel, data) {
-          push.send([
-            channel
-          , wireutil.envelope(new wire.TouchDownMessage(
-              data.seq
-            , data.contact
-            , data.x
-            , data.y
-            , data.pressure
-            ))
-          ])
+          layoutCaptureService.enqueue(wire.TouchDownMessage, function() {
+            deviceEventStore.storeEvent('input.touchDown', data);
+            push.send([
+              channel
+              , wireutil.envelope(new wire.TouchDownMessage(
+                data.seq
+                , data.contact
+                , data.x
+                , data.y
+                , data.pressure
+              ))
+            ])
+          });
         })
         .on('input.touchMove', function(channel, data) {
-          push.send([
-            channel
-          , wireutil.envelope(new wire.TouchMoveMessage(
-              data.seq
-            , data.contact
-            , data.x
-            , data.y
-            , data.pressure
-            ))
-          ])
+          layoutCaptureService.enqueue(wire.TouchMoveMessage, function() {
+            deviceEventStore.storeEvent('input.touchMove', data);
+            push.send([
+              channel
+              , wireutil.envelope(new wire.TouchMoveMessage(
+                data.seq
+                , data.contact
+                , data.x
+                , data.y
+                , data.pressure
+              ))
+            ])
+          });
         })
         .on('input.touchUp', function(channel, data) {
-          push.send([
-            channel
-          , wireutil.envelope(new wire.TouchUpMessage(
-              data.seq
-            , data.contact
-            ))
-          ])
+          layoutCaptureService.enqueue(wire.TouchUpMessage, function() {
+            deviceEventStore.storeEvent('input.touchUp', data);
+
+            push.send([
+              channel
+              , wireutil.envelope(new wire.TouchUpMessage(
+                data.seq
+                , data.contact
+              ))
+            ])
+          });
+
         })
         .on('input.touchCommit', function(channel, data) {
-          push.send([
-            channel
-          , wireutil.envelope(new wire.TouchCommitMessage(
-              data.seq
-            ))
-          ])
+          layoutCaptureService.enqueue(wire.TouchCommitMessage, function() {
+            deviceEventStore.storeEvent('input.touchCommit', data);
+
+            push.send([
+              channel
+              , wireutil.envelope(new wire.TouchCommitMessage(
+                data.seq
+              ))
+            ])
+          });
+
         })
         .on('input.touchReset', function(channel, data) {
-          push.send([
-            channel
-          , wireutil.envelope(new wire.TouchResetMessage(
-              data.seq
-            ))
-          ])
+          layoutCaptureService.enqueue(wire.TouchResetMessage, function() {
+            deviceEventStore.storeEvent('input.touchReset', data);
+
+            push.send([
+              channel
+              , wireutil.envelope(new wire.TouchResetMessage(
+                data.seq
+              ))
+            ])
+          });
+
         })
         .on('input.gestureStart', function(channel, data) {
-          push.send([
-            channel
-          , wireutil.envelope(new wire.GestureStartMessage(
-              data.seq
-            ))
-          ])
+          layoutCaptureService.enqueue(wire.GestureStartMessage, function(xmlRes) {
+            console.log("Received XML:", xmlRes)
+
+            data.xml = xmlRes;
+            deviceEventStore.storeEvent('input.gestureStart', data);
+
+            push.send([
+              channel
+              , wireutil.envelope(new wire.GestureStartMessage(
+                data.seq
+              ))
+            ])
+          });
+
         })
         .on('input.gestureStop', function(channel, data) {
-          push.send([
-            channel
-          , wireutil.envelope(new wire.GestureStopMessage(
-              data.seq
-            ))
-          ])
+          layoutCaptureService.enqueue(wire.GestureStopMessage, function() {
+            deviceEventStore.storeEvent('input.gestureStop', data);
+
+            push.send([
+              channel
+              , wireutil.envelope(new wire.GestureStopMessage(
+                data.seq
+              ))
+            ])
+          });
+
         })
         // Key events
         .on('input.keyDown', createKeyHandler(wire.KeyDownMessage))
         .on('input.keyUp', createKeyHandler(wire.KeyUpMessage))
         .on('input.keyPress', createKeyHandler(wire.KeyPressMessage))
         .on('input.type', function(channel, data) {
-          push.send([
-            channel
-          , wireutil.envelope(new wire.TypeMessage(
-              data.text
-            ))
-          ])
+          layoutCaptureService.enqueue(wire.TypeMessage, function() {
+            deviceEventStore.storeEvent('input.keyPress', data);
+
+            push.send([
+              channel
+              , wireutil.envelope(new wire.TypeMessage(
+                data.text
+              ))
+            ])
+          });
         })
         .on('display.rotate', function(channel, data) {
-          push.send([
-            channel
-          , wireutil.envelope(new wire.RotateMessage(
-              data.rotation
-            ))
-          ])
+          layoutCaptureService.enqueue(wire.RotateMessage, function() {
+            push.send([
+              channel
+              , wireutil.envelope(new wire.RotateMessage(
+                data.rotation
+              ))
+            ])
+          })
         })
         // Transactions
         .on('clipboard.paste', function(channel, responseChannel, data) {
-          joinChannel(responseChannel)
-          push.send([
-            channel
-          , wireutil.transaction(
-              responseChannel
-            , new wire.PasteMessage(data.text)
-            )
-          ])
+          layoutCaptureService.enqueue(wire.PasteMessage, function() {
+            deviceEventStore.storeEvent('clipboard.paste', data);
+
+            joinChannel(responseChannel)
+            push.send([
+              channel
+              , wireutil.transaction(
+                responseChannel
+                , new wire.PasteMessage(data.text)
+              )
+            ])
+          });
         })
         .on('clipboard.copy', function(channel, responseChannel) {
-          joinChannel(responseChannel)
-          push.send([
-            channel
-          , wireutil.transaction(
-              responseChannel
-            , new wire.CopyMessage()
-            )
-          ])
+          layoutCaptureService.enqueue(wire.CopyMessage, function() {
+            deviceEventStore.storeEvent('clipboard.copy', {});
+
+            joinChannel(responseChannel)
+            push.send([
+              channel
+              , wireutil.transaction(
+                responseChannel
+                , new wire.CopyMessage()
+              )
+            ])
+          });
         })
         .on('device.identify', function(channel, responseChannel) {
           push.send([

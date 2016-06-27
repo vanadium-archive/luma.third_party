@@ -23,6 +23,7 @@ module.exports.fork = function(filename, args) {
   log.info('Forking "%s %s"', filename, args.join(' '))
 
   var resolver = Promise.defer()
+
   var proc = cp.fork.apply(cp, arguments)
 
   function sigintListener() {

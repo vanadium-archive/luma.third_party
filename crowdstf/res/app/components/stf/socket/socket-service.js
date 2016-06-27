@@ -11,6 +11,14 @@ module.exports = function SocketFactory(
     reconnection: false, transports: ['websocket']
   })
 
+  socket.setWSId = function(wsId){
+    this.wsId = wsId;
+  }
+
+  socket.getWsId = function(){
+    return this.wsId;
+  }
+
   socket.scoped = function($scope) {
     var listeners = []
 

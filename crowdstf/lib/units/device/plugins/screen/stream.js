@@ -13,10 +13,14 @@ var lifecycle = require('../../../../util/lifecycle')
 var bannerutil = require('./util/banner')
 var FrameParser = require('./util/frameparser')
 var FrameConfig = require('./util/frameconfig')
+var FrameStore = require('./util/framestore')
 var BroadcastSet = require('./util/broadcastset')
 var StateQueue = require('../../../../util/statequeue')
 var RiskyStream = require('../../../../util/riskystream')
 var FailCounter = require('../../../../util/failcounter')
+
+const FINAL_DEVICE_CAPTURE_WIDTH = 1080;
+const FINAL_DEVICE_CAPTURE_HEIGHT = 1920;
 
 module.exports = syrup.serial()
   .dependency(require('../../support/adb'))
@@ -25,6 +29,7 @@ module.exports = syrup.serial()
   .dependency(require('./options'))
   .define(function(options, adb, minicap, display, screenOptions) {
     var log = logger.createLogger('device:plugins:screen:stream')
+    var frameStore = new FrameStore();
 
     function FrameProducer(config) {
       EventEmitter.call(this)
@@ -172,6 +177,22 @@ module.exports = syrup.serial()
       log.info('Setting frame producer projection to %dx%d', width, height)
       this.frameConfig.virtualWidth = width
       this.frameConfig.virtualHeight = height
+      this._configChanged()
+    }
+
+    FrameProducer.prototype.setStaticProjection = function() {
+      if (this.frameConfig.virtualWidth === FINAL_DEVICE_CAPTURE_WIDTH &&
+          this.frameConfig.virtualHeight === FINAL_DEVICE_CAPTURE_HEIGHT) {
+        log.info('Keeping %dx%d as current frame producer projection',
+          FINAL_DEVICE_CAPTURE_WIDTH, FINAL_DEVICE_CAPTURE_HEIGHT)
+        return
+      }
+
+      log.info('Setting frame producer projection to %dx%d',
+        FINAL_DEVICE_CAPTURE_WIDTH,
+        FINAL_DEVICE_CAPTURE_HEIGHT)
+      this.frameConfig.virtualWidth = FINAL_DEVICE_CAPTURE_WIDTH
+      this.frameConfig.virtualHeight = FINAL_DEVICE_CAPTURE_HEIGHT
       this._configChanged()
     }
 
@@ -483,7 +504,7 @@ module.exports = syrup.serial()
           var frame = frameProducer.nextFrame()
           if (frame) {
             Promise.settle([broadcastSet.keys().map(function(id) {
-              return broadcastSet.get(id).onFrame(frame)
+              return broadcastSet.get(id).onFrame(frame, id)
             })]).then(next)
           }
           else {
@@ -501,10 +522,10 @@ module.exports = syrup.serial()
 
           function wsStartNotifier() {
             return new Promise(function(resolve, reject) {
-              var message = util.format(
-                'start %s'
-              , JSON.stringify(frameProducer.banner)
-              )
+              frameProducer.banner.wsId = id;
+
+              var message = util.format('start %s',
+                JSON.stringify(frameProducer.banner))
 
               switch (ws.readyState) {
               case WebSocket.OPENING:
@@ -530,7 +551,7 @@ module.exports = syrup.serial()
             })
           }
 
-          function wsFrameNotifier(frame) {
+          function wsFrameNotifier(frame, id) {
             return new Promise(function(resolve, reject) {
               switch (ws.readyState) {
               case WebSocket.OPENING:
@@ -538,6 +559,18 @@ module.exports = syrup.serial()
                 return reject(new Error(util.format(
                   'Unable to send frame to OPENING client "%s"', id)))
               case WebSocket.OPEN:
+                var fileName = frameStore.storeFrame(frame, id);
+
+                var message = util.format(
+                  'nextImgId %s'
+                  , fileName
+                )
+
+                // Send the next img file id first
+                ws.send(message, function (err) {
+                  return err ? reject(err) : resolve()
+                })
+
                 // This is what SHOULD happen.
                 ws.send(frame, {
                   binary: true
@@ -572,8 +605,7 @@ module.exports = syrup.serial()
                 broadcastSet.remove(id)
                 break
               case 'size':
-                frameProducer.updateProjection(
-                  Number(match[3]), Number(match[4]))
+                frameProducer.setStaticProjection()
                 break
               }
             }

@@ -8,6 +8,9 @@ var ip = require('my-local-ip')
 var pkg = require('../package')
 var cliutil = require('./util/cliutil')
 var logger = require('./util/logger')
+var path = require('path')
+
+global.appRoot = path.resolve(__dirname);
 
 Promise.longStackTraces()
 

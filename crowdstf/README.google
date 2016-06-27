@@ -7,4 +7,6 @@ Description:
 Control and manage Android devices from your browser. https://openstf.io
 
 Local Modifications:
-No modifications
+Change 23400
+  Added screen captures save-to-disk
+  Added gesture capture persistence to db

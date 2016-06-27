@@ -141,6 +141,43 @@ dbapi.saveDeviceLog = function(serial, entry) {
     }))
 }
 
+/**
+ * Persists android device events
+ * @example
+ *   dbapi.saveDeviceEvent("foo", "bar"....)
+ *   .then(function(result) {
+ *     console.log("Saved", result.inserted, "device events");
+ *   })
+ *   .catch(function(err){
+ *     throw err;
+ *   })
+ * @returns {Promise} Returns a promise with RethinkDB result
+ */
+dbapi.saveDeviceEvent = function(deviceSerial, sessionId, eventName, imgId,
+    timestamp, seq, contact, x, y, pressure, userEmail, userGroup, userIP,
+    userLastLogin, userName) {
+  var deviceEventDTO = {
+    serial: deviceSerial,
+    sessionId: sessionId,
+    eventName: eventName,
+    imgId: imgId,
+    timestamp: timestamp,
+    seq: seq === undefined ? null : seq,
+    x: x === undefined ? null : x,
+    y: y === undefined ? null : y,
+    pressure: (pressure === undefined ? null : pressure),
+    userEmail: userEmail,
+    userGroup: userGroup,
+    userIP: userIP,
+    userLastLogin: userLastLogin,
+    userName: userName
+  };
+
+  return db.run(r.table('deviceEvents').insert(deviceEventDTO, {
+    durability: 'soft'
+  }))
+}
+
 dbapi.saveDeviceInitialState = function(serial, device) {
   var data = {
     present: false
