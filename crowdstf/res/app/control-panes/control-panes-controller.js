@@ -75,9 +75,8 @@ module.exports =
           return device
         })
         .catch(function() {
-          $timeout(function() {
-            $location.path('/')
-          })
+          // Ignore redirects to device page, issue warning.
+          console.error('Unable to connect to device, it may not be usable.');
         })
     }
 

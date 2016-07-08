@@ -12,3 +12,5 @@ Change http://v.io/c/23400
   Added gesture capture persistence to db
 Change http://v.io/c/23714
   Added token-based authentication (backend)
+Change http://v.io/c/23716
+  Trimmed OpenSTF UI controls to simple crowd UI

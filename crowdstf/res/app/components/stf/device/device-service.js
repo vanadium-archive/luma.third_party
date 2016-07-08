@@ -2,7 +2,9 @@ var oboe = require('oboe')
 var _ = require('lodash')
 var EventEmitter = require('eventemitter3')
 
-module.exports = function DeviceServiceFactory($http, socket, EnhanceDeviceService) {
+module.exports = function DeviceServiceFactory($http, $cookies, socket,
+                                               EnhanceDeviceService,
+                                               GroupService) {
   var deviceService = {}
 
   function Tracker($scope, options) {
@@ -144,6 +146,15 @@ module.exports = function DeviceServiceFactory($http, socket, EnhanceDeviceServi
     scopedSocket.on('device.add', addListener)
     scopedSocket.on('device.remove', changeListener)
     scopedSocket.on('device.change', changeListener)
+    scopedSocket.on('forceKick', function(serial) {
+      var device = get({serial: serial});
+      GroupService.kick(device, true);
+      $cookies.remove('XSRF-TOKEN');
+      $cookies.remove('ssid');
+      $cookies.remove('ssid.sig');
+      window.location.reload();
+      $scope.destroy();
+    });
 
     this.add = function(device) {
       addListener({

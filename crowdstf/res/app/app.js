@@ -20,10 +20,6 @@ require.ensure([], function(require) {
   ])
     .config(function($routeProvider, $locationProvider) {
       $locationProvider.hashPrefix('!')
-      $routeProvider
-        .otherwise({
-          redirectTo: '/devices'
-        })
     })
 
     .config(function(hotkeysProvider) {
