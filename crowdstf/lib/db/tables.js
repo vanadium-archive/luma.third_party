@@ -57,4 +57,10 @@ module.exports = {
 , deviceEvents: {
     primaryKey: 'id'
   }
+, tokens: {
+    primaryKey: 'token'
+  }
+, kicks: {
+    primaryKey: 'id'
+  }
 }

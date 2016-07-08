@@ -8,7 +8,11 @@ module.exports = function(options) {
     if (req.query.jwt) {
       // Coming from auth client
       var data = jwtutil.decode(req.query.jwt, options.secret)
+      var serial = req.query.serial;
       var redir = urlutil.removeParam(req.url, 'jwt')
+      if (serial) {
+        redir = urlutil.removeParam(req.url, 'serial') + '#!/control/' + serial;
+      }
       if (data) {
         // Redirect once to get rid of the token
         dbapi.saveUserAfterLogin({

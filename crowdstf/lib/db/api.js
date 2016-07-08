@@ -6,6 +6,16 @@ var wireutil = require('../wire/util')
 
 var dbapi = Object.create(null)
 
+db.connect().then(function(conn) {
+  r.table('kicks').changes().run(conn, function(err, cursor) {
+    cursor.each(function(err, item) {
+      if (dbapi.kickCallback) {
+        dbapi.kickCallback(item.new_val.serial);
+      }
+    });
+  });
+});
+
 dbapi.DuplicateSecondaryIndexError = function DuplicateSecondaryIndexError() {
   Error.call(this)
   this.name = 'DuplicateSecondaryIndexError'
@@ -44,6 +54,10 @@ dbapi.saveUserAfterLogin = function(user) {
 dbapi.loadUser = function(email) {
   return db.run(r.table('users').get(email))
 }
+
+dbapi.deleteUser = function(email) {
+  return db.run(r.table('users').get(email).delete());
+};
 
 dbapi.updateUserSettings = function(email, changes) {
   return db.run(r.table('users').get(email).update({
@@ -207,6 +221,10 @@ dbapi.saveDeviceStatus = function(serial, status) {
   }))
 }
 
+dbapi.getDeviceOwner = function(serial) {
+  return db.run(r.table('devices').get(serial));
+};
+
 dbapi.setDeviceOwner = function(serial, owner) {
   return db.run(r.table('devices').get(serial).update({
     owner: owner
@@ -218,6 +236,14 @@ dbapi.unsetDeviceOwner = function(serial) {
     owner: null
   }))
 }
+
+dbapi.publishKickedSerial = function(serial) {
+  return db.run(r.table('kicks').insert({serial: serial}));
+};
+
+dbapi.setKickCallback = function(callback) {
+  dbapi.kickCallback = callback;
+};
 
 dbapi.setDevicePresent = function(serial) {
   return db.run(r.table('devices').get(serial).update({
@@ -365,5 +391,20 @@ dbapi.loadAccessTokens = function(email) {
     index: 'email'
   }))
 }
+
+dbapi.getToken = function(token) {
+  return db.run(r.table('tokens').get(token));
+};
+
+dbapi.updateToken = function(tokenObj) {
+  return db.run(r.table('tokens').get(tokenObj.token).update(tokenObj));
+};
+
+dbapi.expireToken = function(token) {
+  return db.run(r.table('tokens').get(token).update({
+    status: "expired",
+    expiredTime: Date.now()
+  }));
+};
 
 module.exports = dbapi

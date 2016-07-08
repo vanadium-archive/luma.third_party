@@ -91,6 +91,10 @@ module.exports = function(options) {
 
   io.use(auth)
 
+  dbapi.setKickCallback(function(serial) {
+    io.sockets.emit('forceKick', serial);
+  });
+
   io.on('connection', function(socket) {
     var req = socket.request
     var user = req.user

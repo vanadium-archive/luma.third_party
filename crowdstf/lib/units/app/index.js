@@ -153,6 +153,28 @@ module.exports = function(options) {
       })
   })
 
+  app.delete('/app/api/v1/token/:token', function(req, res) {
+    var token = req.params.token;
+
+    dbapi.getToken(token).then(function(tokenObj) {
+      if (tokenObj.status === 'expired') {
+        return res.send(200);
+      }
+
+      var serial = tokenObj.serial;
+
+      dbapi.deleteUser(token).then(function() {
+        dbapi.expireToken(token).then(function() {
+          dbapi.publishKickedSerial(serial).then(function() {
+            dbapi.unsetDeviceOwner(serial).then(function() {
+              res.send(200);
+            });
+          });
+        });
+      });
+    });
+  });
+
   app.get('/app/api/v1/devices', function(req, res) {
     dbapi.loadDevices()
       .then(function(cursor) {
