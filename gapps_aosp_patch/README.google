@@ -1,0 +1,11 @@
+URL: https://github.com/TeamExodus/frameworks_base/archive/9c36be651e83fb039a262682839bd920b033007a.zip
+Version: 9c36be651e83fb039a262682839bd920b033007a
+License: Apache License, Version 2.0
+License File: LICENSE
+
+Description:
+Patch for granting permissions to Google core apps.
+
+Local Modifications:
+Modified the lines numbers where the patch is applied. READ_PHONE_STATE
+permission added to Google Setup Wizard.
