@@ -1,0 +1,1062 @@
+diff --git a/core/java/android/app/Activity.java b/core/java/android/app/Activity.java
+index ecd0050..5053c79 100644
+--- a/core/java/android/app/Activity.java
++++ b/core/java/android/app/Activity.java
+@@ -84,6 +84,7 @@ import android.view.ActionMode;
+ import android.view.ContextMenu;
+ import android.view.ContextMenu.ContextMenuInfo;
+ import android.view.ContextThemeWrapper;
++import android.view.GestureDetector;
+ import android.view.KeyEvent;
+ import android.view.LayoutInflater;
+ import android.view.Menu;
+@@ -104,6 +105,11 @@ import android.view.WindowManagerGlobal;
+ import android.view.accessibility.AccessibilityEvent;
+ import android.widget.AdapterView;
+ 
++import org.json.JSONArray;
++import org.json.JSONException;
++import org.json.JSONObject;
++import org.json.JSONStringer;
++
+ import java.io.FileDescriptor;
+ import java.io.PrintWriter;
+ import java.lang.annotation.Retention;
+@@ -700,6 +706,74 @@ public class Activity extends ContextThemeWrapper
+     }
+     private SparseArray<ManagedDialog> mManagedDialogs;
+ 
++    /* RICO: Logs gestures on activities through logcat. */
++    private GestureDetector mRicoGestureDetector;
++    private GestureLogger mRicoGestureLogger;
++
++    private static class GestureLogger implements GestureDetector.OnGestureListener,
++            GestureDetector.OnDoubleTapListener {
++        private String activityName;
++        private static final String DEBUG_TAG = "RICO_Gestures";
++
++        public GestureLogger(String activityName) {
++            this.activityName = activityName;
++        }
++
++        @Override
++        public boolean onDown(MotionEvent event) {
++            Log.d(DEBUG_TAG, "down:" + activityName);
++            return true;
++        }
++
++        @Override
++        public boolean onFling(MotionEvent event1, MotionEvent event2,
++                float velocityX, float velocityY) {
++            Log.d(DEBUG_TAG, "fling:" + activityName);
++            return true;
++        }
++
++        @Override
++        public void onLongPress(MotionEvent event) {
++            Log.d(DEBUG_TAG, "long_press:" + activityName);
++        }
++
++        @Override
++        public boolean onScroll(MotionEvent e1, MotionEvent e2, float distanceX,
++                float distanceY) {
++            Log.d(DEBUG_TAG, "scroll:" + activityName);
++            return true;
++        }
++
++        @Override
++        public void onShowPress(MotionEvent event) {
++            Log.d(DEBUG_TAG, "show_press:" + activityName);
++        }
++
++        @Override
++        public boolean onSingleTapUp(MotionEvent event) {
++            Log.d(DEBUG_TAG, "single_tap_up:" + activityName);
++            return true;
++        }
++
++        @Override
++        public boolean onDoubleTap(MotionEvent event) {
++            Log.d(DEBUG_TAG, "double_tap:" + activityName);
++            return true;
++        }
++
++        @Override
++        public boolean onDoubleTapEvent(MotionEvent event) {
++            Log.d(DEBUG_TAG, "double_tap_event:" + activityName);
++            return true;
++        }
++
++        @Override
++        public boolean onSingleTapConfirmed(MotionEvent event) {
++            Log.d(DEBUG_TAG, "single_tap_confirmed:" + activityName);
++            return true;
++        }
++    }
++
+     // set by the thread after the constructor and before onCreate(Bundle savedInstanceState) is called.
+     private Instrumentation mInstrumentation;
+     private IBinder mToken;
+@@ -924,6 +998,13 @@ public class Activity extends ContextThemeWrapper
+             mVoiceInteractor.attachActivity(this);
+         }
+         mCalled = true;
++
++        /*
++         * RICO: Initializes the gesture logger.
++         */
++        mRicoGestureLogger = new GestureLogger(this.getComponentName().flattenToString());
++        mRicoGestureDetector = new GestureDetector(this, mRicoGestureLogger);
++        mRicoGestureDetector.setOnDoubleTapListener(mRicoGestureLogger);
+     }
+ 
+     /**
+@@ -5560,6 +5641,17 @@ public class Activity extends ContextThemeWrapper
+     }
+ 
+     /**
++     * RICO: Used to access FragmentManager instance to obtain active and
++     * added fragment names. dumpActiveAndAddedFragments() is a custom method
++     * in the FragmentManager class that we added.
++     * @hide
++     */
++    public void dumpFragments(JSONObject view) throws JSONException {
++        FragmentManager fragManager = mFragments.getFragmentManager();
++        fragManager.dumpActiveAndAddedFragments(view);
++    }
++
++    /**
+      * Print the Activity's state into the given stream.  This gets invoked if
+      * you run "adb shell dumpsys activity &lt;activity_component_name&gt;".
+      *
+diff --git a/core/java/android/app/ActivityThread.java b/core/java/android/app/ActivityThread.java
+index fd88a05..94c4c00 100644
+--- a/core/java/android/app/ActivityThread.java
++++ b/core/java/android/app/ActivityThread.java
+@@ -110,6 +110,11 @@ import com.android.org.conscrypt.OpenSSLSocketImpl;
+ import com.android.org.conscrypt.TrustedCertificateStore;
+ import com.google.android.collect.Lists;
+ 
++import org.json.JSONArray;
++import org.json.JSONException;
++import org.json.JSONObject;
++import org.json.JSONStringer;
++
+ import java.io.File;
+ import java.io.FileDescriptor;
+ import java.io.FileOutputStream;
+@@ -942,6 +947,11 @@ public final class ActivityThread {
+             sendMessage(H.SCHEDULE_CRASH, msg);
+         }
+ 
++        /*
++         * RICO: This method sends an asynchronous message that is put onto a queue.
++         * The ActivityThread class later will handle the message with the method
++         * handleMessage().
++         */
+         public void dumpActivity(FileDescriptor fd, IBinder activitytoken,
+                 String prefix, String[] args) {
+             DumpComponentInfo data = new DumpComponentInfo();
+@@ -950,7 +960,24 @@ public final class ActivityThread {
+                 data.token = activitytoken;
+                 data.prefix = prefix;
+                 data.args = args;
+-                sendMessage(H.DUMP_ACTIVITY, data, 0, 0, true /*async*/);
++                boolean stream = false;
++
++                for (String arg: args) {
++                    if ("stream".equals(arg)) {
++                        stream = true;
++                        break;
++                    }
++                }
++                /*
++                 * If the stream argument is used when calling dumpActivity,
++                 * DUMP_ACTIVITY_TO_STREAM code will be sent. This results in the
++                 * invocation of a custom method (handleDumpActivityUIStream())
++                 */
++                if (stream) {
++                    sendMessage(H.DUMP_ACTIVITY_TO_STREAM, data, 0, 0, true /*async*/);
++                } else {
++                    sendMessage(H.DUMP_ACTIVITY, data, 0, 0, true /*async*/);
++                }
+             } catch (IOException e) {
+                 Slog.w(TAG, "dumpActivity failed", e);
+             }
+@@ -1275,6 +1302,7 @@ public final class ActivityThread {
+         public static final int CANCEL_VISIBLE_BEHIND = 147;
+         public static final int BACKGROUND_VISIBLE_BEHIND_CHANGED = 148;
+         public static final int ENTER_ANIMATION_COMPLETE = 149;
++        public static final int DUMP_ACTIVITY_TO_STREAM = 150;
+ 
+         String codeToString(int code) {
+             if (DEBUG_MESSAGES) {
+@@ -1328,6 +1356,7 @@ public final class ActivityThread {
+                     case CANCEL_VISIBLE_BEHIND: return "CANCEL_VISIBLE_BEHIND";
+                     case BACKGROUND_VISIBLE_BEHIND_CHANGED: return "BACKGROUND_VISIBLE_BEHIND_CHANGED";
+                     case ENTER_ANIMATION_COMPLETE: return "ENTER_ANIMATION_COMPLETE";
++                    case DUMP_ACTIVITY_TO_STREAM: return "DUMP_ACTIVITY_TO_STREAM";
+                 }
+             }
+             return Integer.toString(code);
+@@ -1557,6 +1586,9 @@ public final class ActivityThread {
+                 case ENTER_ANIMATION_COMPLETE:
+                     handleEnterAnimationComplete((IBinder) msg.obj);
+                     break;
++                case DUMP_ACTIVITY_TO_STREAM:
++                    handleDumpActivityToStream((DumpComponentInfo) msg.obj);
++                    break;
+             }
+             if (DEBUG_MESSAGES) Slog.v(TAG, "<<< done: " + codeToString(msg.what));
+         }
+@@ -2981,6 +3013,47 @@ public final class ActivityThread {
+         }
+     }
+ 
++    /*
++     * RICO: When the ActivityThread asynchronously receives a command to dump
++     * activity with the argument stream, this method will be called.
++     * The current top window's UI hierarchy will be dumped to the file descriptor
++     * contained in the arguments. The current root view of
++     * the top window is obtained by calling the modified getCurrentFocusRoot()
++     * method of the WindowManagerGlobal class.
++     */
++    private void handleDumpActivityToStream(DumpComponentInfo info) {
++        final StrictMode.ThreadPolicy oldPolicy = StrictMode.allowThreadDiskWrites();
++        try {
++            ActivityClientRecord r = mActivities.get(info.token);
++            JSONObject view = new JSONObject();
++            if (r != null && r.activity != null) {
++                r.activity.dumpFragments(view);
++
++                WindowManagerGlobal wmg = WindowManagerGlobal.getInstance();
++                view.put("is_keyboard_deployed", wmg.isKeyboardDeployed());
++
++                ViewRootImpl root = wmg.getCurrentFocusRoot();
++                if (root == null) {
++                    view.put("is_external", true);
++                } else {
++                    root.dumpRoot(view);
++                }
++
++                PrintWriter pw = new FastPrintWriter(new FileOutputStream(
++                        info.fd.getFileDescriptor()));
++                pw.print("\"activity\": ");
++                pw.print(view.toString());
++                pw.flush();
++            }
++        } catch (JSONException e) {
++            Log.e("RICO", "Exception in serializing View object to JSON.");
++            Log.e("RICO", e.getMessage());
++        }  finally {
++            IoUtils.closeQuietly(info.fd);
++            StrictMode.setThreadPolicy(oldPolicy);
++        }
++    }
++
+     private void handleDumpProvider(DumpComponentInfo info) {
+         final StrictMode.ThreadPolicy oldPolicy = StrictMode.allowThreadDiskWrites();
+         try {
+diff --git a/core/java/android/app/FragmentManager.java b/core/java/android/app/FragmentManager.java
+index 696ccdb..cd17a45 100644
+--- a/core/java/android/app/FragmentManager.java
++++ b/core/java/android/app/FragmentManager.java
+@@ -45,6 +45,11 @@ import android.view.View;
+ import android.view.ViewGroup;
+ import com.android.internal.util.FastPrintWriter;
+ 
++import org.json.JSONArray;
++import org.json.JSONException;
++import org.json.JSONObject;
++import org.json.JSONStringer;
++
+ import java.io.FileDescriptor;
+ import java.io.PrintWriter;
+ import java.util.ArrayList;
+@@ -333,6 +338,13 @@ public abstract class FragmentManager {
+     public abstract boolean isDestroyed();
+ 
+     /**
++     * RICO: Print the FragmentManager's state into the given stream.
++     *
++     * @hide
++     */
++    public abstract void dumpActiveAndAddedFragments(JSONObject view) throws JSONException;
++
++    /**
+      * Print the FragmentManager's state into the given stream.
+      *
+      * @param prefix Text to print at the front of each line.
+@@ -701,6 +713,35 @@ final class FragmentManagerImpl extends FragmentManager implements LayoutInflate
+         return sb.toString();
+     }
+ 
++    /*
++     * RICO: Adds the names of fragments from a list to the JSONObject for the view.
++     */
++    private void dumpFragments(JSONObject view,  ArrayList<Fragment> fragmentList,
++                               String name) throws JSONException {
++        JSONArray fragments = new JSONArray();
++        if (fragmentList != null) {
++            int numFragments = fragmentList.size();
++            for (int i = 0; i < numFragments; i++) {
++                Fragment frag = fragmentList.get(i);
++                if (frag == null) {
++                    continue;
++                }
++                int fragmentId = frag.getId();
++                if (fragmentId != 0) {
++                    fragments.put(Integer.toHexString(fragmentId));
++                }
++            }
++        }
++        view.put(name, fragments);
++    }
++
++
++    public void dumpActiveAndAddedFragments(JSONObject view) throws JSONException {
++        dumpFragments(view, mActive, "active_fragments");
++        dumpFragments(view, mAdded, "added_fragments");
++    }
++
++
+     @Override
+     public void dump(String prefix, FileDescriptor fd, PrintWriter writer, String[] args) {
+         String innerPrefix = prefix + "    ";
+diff --git a/core/java/android/view/IWindowManager.aidl b/core/java/android/view/IWindowManager.aidl
+index 5994d4f..bd6127d 100644
+--- a/core/java/android/view/IWindowManager.aidl
++++ b/core/java/android/view/IWindowManager.aidl
+@@ -271,4 +271,18 @@ interface IWindowManager
+      * @return The frame statistics or null if the window does not exist.
+      */
+     WindowContentFrameStats getWindowContentFrameStats(IBinder token);
++
++    /**
++     * Gets the flag associated with a given window.
++     *
++     * @return The flag of the currently focused window or -1 if the window does not exist.
++     */
++    int getCurrentFlag();
++
++    /**
++     * Gets state of the keyboard.
++     *
++     * @return True if the keyboard is deployed, false otherwise.
++     */
++    boolean isKeyboardDeployed();
+ }
+diff --git a/core/java/android/view/View.java b/core/java/android/view/View.java
+index 720d9a8..596350d 100644
+--- a/core/java/android/view/View.java
++++ b/core/java/android/view/View.java
+@@ -16,6 +16,7 @@
+ 
+ package android.view;
+ 
++import android.app.Activity;
+ import android.animation.AnimatorInflater;
+ import android.animation.StateListAnimator;
+ import android.annotation.CallSuper;
+@@ -95,8 +96,10 @@ import android.view.animation.Transformation;
+ import android.view.inputmethod.EditorInfo;
+ import android.view.inputmethod.InputConnection;
+ import android.view.inputmethod.InputMethodManager;
++import android.widget.AdapterView;
+ import android.widget.Checkable;
+ import android.widget.FrameLayout;
++import android.widget.LinearLayout;
+ import android.widget.ScrollBarDrawable;
+ 
+ import static android.os.Build.VERSION_CODES.*;
+@@ -108,6 +111,11 @@ import com.android.internal.view.menu.MenuBuilder;
+ import com.google.android.collect.Lists;
+ import com.google.android.collect.Maps;
+ 
++import org.json.JSONArray;
++import org.json.JSONException;
++import org.json.JSONObject;
++import org.json.JSONStringer;
++
+ import java.lang.annotation.Retention;
+ import java.lang.annotation.RetentionPolicy;
+ import java.lang.ref.WeakReference;
+@@ -4554,6 +4562,115 @@ public class View implements Drawable.Callback, KeyEvent.Callback,
+         mAttributes = trimmed;
+     }
+ 
++    /**
++     * RICO: Gets all ancestor classes of the current object.
++     * @hide
++     */
++    private ArrayList<String> getAncestors() {
++        ArrayList<String> retVal = new ArrayList<String>();
++        Class curClass = this.getClass();
++        Class superclass = curClass.getSuperclass();
++        while (superclass != null) {
++            retVal.add(superclass.getName());
++            curClass = superclass;
++            superclass = curClass.getSuperclass();
++        }
++        return retVal;
++
++    }
++
++    /**
++     * RICO: Arranges several properties of the View instance as a JSONObject.
++     * @hide
++     */
++    public JSONObject toJson() throws JSONException {
++        JSONObject obj = new JSONObject();
++        obj.put("class", getClass().getName());
++        switch (mViewFlags & VISIBILITY_MASK) {
++          case VISIBLE:
++              obj.put("visibility", "visible");
++              break;
++          case INVISIBLE:
++              obj.put("visibility", "invisible");
++              break;
++          case GONE:
++              obj.put("visibility", "gone");
++              break;
++          default:
++              break;
++        }
++        obj.put("visible-to-user", this.isVisibleToUser());
++        obj.put("adapter-view", (this instanceof AdapterView));
++        obj.put("focusable", (mViewFlags & FOCUSABLE_MASK) == FOCUSABLE);
++        obj.put("enabled", (mViewFlags & ENABLED_MASK) == ENABLED);
++        obj.put("draw", (mViewFlags & DRAW_MASK) == WILL_NOT_DRAW);
++        obj.put("scrollable-horizontal", (mViewFlags & SCROLLBARS_HORIZONTAL) != 0);
++        obj.put("scrollable-vertical", (mViewFlags & SCROLLBARS_VERTICAL) != 0);
++        obj.put("clickable", (mViewFlags & CLICKABLE) != 0 );
++        JSONArray ancestors = new JSONArray();
++        for (String className : getAncestors()) {
++            ancestors.put(className);
++        }
++        obj.put("ancestors", ancestors );
++        obj.put("pointer", Integer.toHexString(System.identityHashCode(this)));
++        obj.put("long-clickable", (mViewFlags & LONG_CLICKABLE) != 0);
++        obj.put("focused", (mPrivateFlags & PFLAG_FOCUSED) != 0);
++        obj.put("selected", (mPrivateFlags & PFLAG_SELECTED) != 0);
++        if ((mPrivateFlags & PFLAG_PREPRESSED) == 0) {
++            obj.put("pressed", (mPrivateFlags & PFLAG_PRESSED) != 0 ? "pressed" : "not_pressed");
++        } else {
++            obj.put("pressed", "prepressed");
++        }
++        JSONArray jsonRelBounds = new JSONArray();
++        jsonRelBounds.put(mLeft);
++        jsonRelBounds.put(mTop);
++        jsonRelBounds.put(mRight);
++        jsonRelBounds.put(mBottom);
++        if (mAttachInfo == null) {
++            obj.put("abs-pos", false);
++            obj.put("bounds", jsonRelBounds);
++        } else {
++            obj.put("abs-pos", true);
++            Rect bounds = mAttachInfo.mTmpInvalRect;
++            getBoundsOnScreen(bounds, true);
++            JSONArray jsonBounds = new JSONArray();
++            jsonBounds.put(bounds.left);
++            jsonBounds.put(bounds.top);
++            jsonBounds.put(bounds.right);
++            jsonBounds.put(bounds.bottom);
++            obj.put("bounds", jsonBounds);
++            obj.put("rel-bounds", jsonRelBounds);
++        }
++        final int id = getId();
++        String resourceId = null;
++        String pkgname = null;
++        if (id != NO_ID) {
++            final Resources r = mResources;
++            if (Resources.resourceHasPackage(id) && r != null) {
++                try {
++                    switch (id & 0xff000000) {
++                      case 0x01000000:
++                          pkgname = "android";
++                          break;
++                      default:
++                          pkgname = r.getResourcePackageName(id);
++                          break;
++                    }
++                    String typename = r.getResourceTypeName(id);
++                    String entryname = r.getResourceEntryName(id);
++                    resourceId = pkgname + ":" + typename + "/" + entryname;
++                } catch (Resources.NotFoundException e) {
++                    Log.e("RICO", "Resources not found for some view instance.");
++                }
++            }
++        }
++        obj.put("resource-id", resourceId);
++        obj.put("package", pkgname);
++        obj.append("content-desc", mContentDescription);
++        return obj;
++    }
++
++
+     public String toString() {
+         StringBuilder out = new StringBuilder(128);
+         out.append(getClass().getName());
+@@ -4616,12 +4733,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback,
+                     }
+                     String typename = r.getResourceTypeName(id);
+                     String entryname = r.getResourceEntryName(id);
+-                    out.append(" ");
+-                    out.append(pkgname);
+-                    out.append(":");
+-                    out.append(typename);
+-                    out.append("/");
+-                    out.append(entryname);
++                    out.append(String.format(" %s:%s/%s", pkgname, typename, entryname));
+                 } catch (Resources.NotFoundException e) {
+                 }
+             }
+@@ -5200,10 +5312,12 @@ public class View implements Drawable.Callback, KeyEvent.Callback,
+         final boolean result;
+         final ListenerInfo li = mListenerInfo;
+         if (li != null && li.mOnClickListener != null) {
++            logEvent("click", true);
+             playSoundEffect(SoundEffectConstants.CLICK);
+             li.mOnClickListener.onClick(this);
+             result = true;
+         } else {
++            logEvent("click", false);
+             result = false;
+         }
+ 
+@@ -5240,7 +5354,10 @@ public class View implements Drawable.Callback, KeyEvent.Callback,
+         boolean handled = false;
+         ListenerInfo li = mListenerInfo;
+         if (li != null && li.mOnLongClickListener != null) {
++            logEvent("long_click", true);
+             handled = li.mOnLongClickListener.onLongClick(View.this);
++        } else {
++            logEvent("long_click", false);
+         }
+         if (!handled) {
+             handled = showContextMenu();
+@@ -5290,6 +5407,80 @@ public class View implements Drawable.Callback, KeyEvent.Callback,
+     }
+ 
+     /**
++     * RICO: Returns the current Activity.
++     */
++    private Activity getActivity() {
++        Context context = getContext();
++        while (context instanceof ContextWrapper) {
++            if (context instanceof Activity) {
++                return (Activity) context;
++            }
++            context = ((ContextWrapper) context).getBaseContext();
++        }
++        return null;
++    }
++
++    private String getDisplayId() {
++        StringBuilder out = new StringBuilder(128);
++        final int id = getId();
++        if (id != NO_ID) {
++            final Resources resources = mResources;
++            if (Resources.resourceHasPackage(id) && resources != null) {
++                try {
++                    String pkgname;
++                    switch (id & 0xff000000) {
++                      case 0x01000000:
++                          pkgname = "android";
++                          break;
++                      default:
++                          pkgname = resources.getResourcePackageName(id);
++                          break;
++                    }
++                    String typename = resources.getResourceTypeName(id);
++                    String entryname = resources.getResourceEntryName(id);
++                    out.append(pkgname);
++                    out.append(":");
++                    out.append(typename);
++                    out.append("/");
++                    out.append(entryname);
++                } catch (Resources.NotFoundException e) {
++                    return "id_not_found";
++                }
++            }
++        }
++        return out.toString();
++    }
++
++    /**
++     * RICO: Outputs information to logcat when events are handled by this view.
++     * @hide
++     */
++    protected void logEvent(String type, boolean through) {
++        String pointer = Integer.toHexString(System.identityHashCode(this));
++        String id = this.getDisplayId();
++        String classname = this.getClass().getName();
++        String content = ((mContentDescription == null) ? "" : (String) mContentDescription);
++        String position = "";
++        if (mAttachInfo == null) {
++            position = String.format("Rel[%s,%s,%s,%s]", mLeft, mTop, mRight, mBottom);
++        } else {
++            Rect bounds = mAttachInfo.mTmpInvalRect;
++            getBoundsOnScreen(bounds, true);
++            position = String.format("Abs[%s,%s,%s,%s]", bounds.left, bounds.top,
++                    bounds.right, bounds.bottom);
++        }
++        String listener = Boolean.toString(through);
++        String activityName = "not_available";
++        if (getActivity() != null && getActivity().getComponentName() != null) {
++            activityName = getActivity().getComponentName().flattenToString();
++        }
++        String stringFormat = "RicoBegin:%s:%s:%s:%s:%s:%s:%s:%s:RicoEnd";
++        String outString = String.format(stringFormat, type, pointer, id, classname, content,
++                position, listener, activityName);
++        Log.d("RICO", outString);
++    }
++
++    /**
+      * Bring up the context menu for this view.
+      *
+      * @return Whether a context menu was displayed.
+@@ -10731,7 +10922,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback,
+      */
+     protected void onScrollChanged(int l, int t, int oldl, int oldt) {
+         notifySubtreeAccessibilityStateChangedIfNeeded();
+-
++        logEvent("scroll", true);
+         if (AccessibilityManager.getInstance(mContext).isEnabled()) {
+             postSendViewScrolledAccessibilityEventCallback();
+         }
+@@ -19697,8 +19888,10 @@ public class View implements Drawable.Callback, KeyEvent.Callback,
+         //noinspection SimplifiableIfStatement
+         if (li != null && li.mOnDragListener != null && (mViewFlags & ENABLED_MASK) == ENABLED
+                 && li.mOnDragListener.onDrag(this, event)) {
++            logEvent("drag", true);
+             return true;
+         }
++        logEvent("drag", false);
+         return onDragEvent(event);
+     }
+ 
+diff --git a/core/java/android/view/ViewRootImpl.java b/core/java/android/view/ViewRootImpl.java
+index 9569422..7290c06 100644
+--- a/core/java/android/view/ViewRootImpl.java
++++ b/core/java/android/view/ViewRootImpl.java
+@@ -82,6 +82,11 @@ import com.android.internal.policy.PhoneFallbackEventHandler;
+ import com.android.internal.view.BaseSurfaceHolder;
+ import com.android.internal.view.RootViewSurfaceTaker;
+ 
++import org.json.JSONArray;
++import org.json.JSONException;
++import org.json.JSONObject;
++import org.json.JSONStringer;
++
+ import java.io.FileDescriptor;
+ import java.io.IOException;
+ import java.io.OutputStream;
+@@ -5507,6 +5512,14 @@ public final class ViewRootImpl implements ViewParent,
+         mView.debug();
+     }
+ 
++    /**
++     * RICO: Dumps the view hierarchy information in the supplied JSONObject starting from the root
++     * view.
++     */
++    public void dumpRoot(JSONObject view) throws JSONException {
++        view.put("root", dumpViewHierarchyAsJson(mView));
++    }
++
+     public void dump(String prefix, FileDescriptor fd, PrintWriter writer, String[] args) {
+         String innerPrefix = prefix + "  ";
+         writer.print(prefix); writer.println("ViewRoot:");
+@@ -5537,6 +5550,29 @@ public final class ViewRootImpl implements ViewParent,
+         dumpViewHierarchy(innerPrefix, writer, mView);
+     }
+ 
++    /*
++     * RICO: Recursively traverses the view hierarchy and returns a JSONObject
++     * that contains this hierarchy and also properties of each of the views.
++     */
++    private JSONObject dumpViewHierarchyAsJson(View view) throws JSONException {
++        if (view == null) {
++            return null;
++        }
++        JSONObject viewJsonObject = view.toJson();
++        if (view instanceof ViewGroup) {
++            ViewGroup grp = (ViewGroup)view;
++            final int numChildren = grp.getChildCount();
++            if (numChildren > 0) {
++                JSONArray children = new JSONArray();
++                for (int i = 0; i < numChildren; i++) {
++                    children.put(dumpViewHierarchyAsJson(grp.getChildAt(i)));
++                }
++                viewJsonObject.put("children", children);
++            }
++        }
++        return viewJsonObject;
++    }
++
+     private void dumpViewHierarchy(String prefix, PrintWriter writer, View view) {
+         writer.print(prefix);
+         if (view == null) {
+diff --git a/core/java/android/view/WindowManagerGlobal.java b/core/java/android/view/WindowManagerGlobal.java
+index 606168c..a428f3d 100644
+--- a/core/java/android/view/WindowManagerGlobal.java
++++ b/core/java/android/view/WindowManagerGlobal.java
+@@ -173,6 +173,51 @@ public final class WindowManagerGlobal {
+         }
+     }
+ 
++    /** RICO
++     * @return True if the keyboard is deployed, false otherwise.
++     */
++    public boolean isKeyboardDeployed() {
++        boolean retVal = false;
++        try {
++            retVal = sWindowManagerService.isKeyboardDeployed();
++        } catch (RemoteException re) {
++            re.printStackTrace();
++        }
++        return retVal;
++    }
++
++    /**
++     * RICO: Obtains the root UI Element (of ViewRootImpl class) of the current
++     * top window. Calls the custom getCurrentFlag() method in the
++     * WindowManagerService class to first obtain the flag of the current top window,
++     * then compares flag with each view roots of all windows.
++     */
++    public ViewRootImpl getCurrentFocusRoot() {
++        ViewRootImpl curViewRoot = null;
++        synchronized (mLock) {
++            int curFlag = -1;
++            try {
++                curFlag = sWindowManagerService.getCurrentFlag();
++            } catch (RemoteException re) {
++                re.printStackTrace();
++            }
++            if (curFlag == -1) {
++                return null;
++            }
++
++            final int numRoots = mRoots.size();
++            String[] mViewRoots = new String[numRoots + 1];
++            for (int i = 0; i < numRoots; ++i) {
++                ViewRootImpl ithRoot = mRoots.get(i);
++                if (ithRoot.mWindowAttributes.flags == curFlag) {
++                    curViewRoot = ithRoot;
++                }
++            }
++
++        }
++        return curViewRoot;
++    }
++
+     public String[] getViewRootNames() {
+         synchronized (mLock) {
+             final int numRoots = mRoots.size();
+diff --git a/services/core/java/com/android/server/am/ActivityManagerService.java b/services/core/java/com/android/server/am/ActivityManagerService.java
+index ba916ad..4f88c6e 100644
+--- a/services/core/java/com/android/server/am/ActivityManagerService.java
++++ b/services/core/java/com/android/server/am/ActivityManagerService.java
+@@ -232,6 +232,7 @@ import android.view.WindowManager;
+ import dalvik.system.VMRuntime;
+ 
+ import java.io.BufferedInputStream;
++import java.io.BufferedReader;
+ import java.io.BufferedOutputStream;
+ import java.io.DataInputStream;
+ import java.io.DataOutputStream;
+@@ -241,10 +242,14 @@ import java.io.FileInputStream;
+ import java.io.FileNotFoundException;
+ import java.io.FileOutputStream;
+ import java.io.IOException;
++import java.io.InputStream;
+ import java.io.InputStreamReader;
+ import java.io.PrintWriter;
+ import java.io.StringWriter;
+ import java.lang.ref.WeakReference;
++import java.net.InetSocketAddress;
++import java.net.ServerSocket;
++import java.net.Socket;
+ import java.nio.charset.StandardCharsets;
+ import java.util.ArrayList;
+ import java.util.Arrays;
+@@ -418,6 +423,9 @@ public final class ActivityManagerService extends ActivityManagerNative
+     // Lower delay than APP_BOOST_MESSAGE_DELAY to disable the boost
+     static final int APP_BOOST_TIMEOUT = 2500;
+ 
++    // RICO: View server runs on this port and handles requests for dumps of the view hierarchy.
++    static final int VIEW_SERVER_PORT = 1699;
++
+     private static native int nativeMigrateToBoost();
+     private static native int nativeMigrateFromBoost();
+     private boolean mIsBoosted = false;
+@@ -456,6 +464,22 @@ public final class ActivityManagerService extends ActivityManagerNative
+         return (isFg) ? mFgBroadcastQueue : mBgBroadcastQueue;
+     }
+ 
++    /*
++     * RICO: Thread that runs the view server.
++     */
++    static Thread sDumperThread = null;
++
++    /*
++     * RICO: Stores the current top activity obtained from the modified window manager.
++     */
++    volatile ActivityRecord mCurrentTopActivity = null;
++
++    /*
++     * RICO: Initialized by the dumper thread and used to dump the JSON representation of the
++     * view hierarchy.
++     */
++    ParcelFileDescriptor pfd = null;
++
+     /**
+      * Activity we have told the window manager to have key focus.
+      */
+@@ -13109,6 +13133,9 @@ public final class ActivityManagerService extends ActivityManagerNative
+                     }
+                 }
+                 return;
++            } else if ("start-view-server".equals(cmd)) {
++                Log.d("RICO", "RicoBegin:Starting Rico View Server:RicoEnd");
++                dumpView(fd, pw, args, opti, dumpAll);
+             } else {
+                 // Dumping a single activity?
+                 if (!dumpActivity(fd, pw, cmd, args, opti, dumpAll)) {
+@@ -13991,6 +14018,109 @@ public final class ActivityManagerService extends ActivityManagerNative
+         return true;
+     }
+ 
++
++    /**
++     * RICO: This command dumps the view hierarchy of the top window of the top
++     * activity when a message is received from the client. It uses a custom
++     * dumpActivity() method in ActivityThread class to obtain the top window
++     * from an activity.
++     */
++    protected void dumpView(FileDescriptor fd, PrintWriter pw, String[] args, int opti,
++                            boolean dumpAll) {
++
++        // If sDumper Thread is running, we ignore the command to start it.
++        if (sDumperThread != null && sDumperThread.isAlive()) {
++            Log.d("RICO", "RicoBegin:Rico View Server is already running!:RicoEnd");
++            return;
++        }
++
++        final FileDescriptor threadFd = fd;
++        final String[] newArgs = new String[args.length - opti];
++        System.arraycopy(args, opti, newArgs, 0, args.length - opti);
++        final PrintWriter threadPw = pw;
++
++        sDumperThread = new Thread(new Runnable() {
++            public void run() {
++                String request;
++                String response;
++                Boolean stopServer = false;
++                try {
++                    ServerSocket server = new ServerSocket(VIEW_SERVER_PORT);
++                    while (true) {
++                        Socket socket = server.accept();
++                        BufferedReader in =
++                                new BufferedReader(new InputStreamReader(socket.getInputStream()));
++                        PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
++
++                        pfd = ParcelFileDescriptor.fromSocket(socket);
++
++                        while (true) {
++                            request = in.readLine();
++                            // If client closes abruptly, a null value is returned.
++                            if (request == null) {
++                                break;
++                            }
++
++                            String[] requestParts = request.split(" ");
++                            String command = null;
++                            String requestId = null;
++                            if (requestParts.length > 0) {
++                                command = requestParts[0];
++                            }
++                            if (requestParts.length > 1) {
++                                requestId = requestParts[1];
++                            }
++
++                            // If an "s" is received, stop the server.
++                            // If a "d" is received, dump the view.
++                            if ("s".equals(command)) {
++                                stopServer = true;
++                                break;
++                            } else if ("d".equals(command)) {
++                                if (requestId == null) {
++                                    out.print("{ \"request_id\": null");
++                                    Log.d("RICO", "RicoBegin:Request_ID: None:RicoEnd");
++                                } else {
++                                    out.print(String.format("{ \"request_id\": \"%s\"", requestId));
++                                    Log.d("RICO", String.format("RicoBegin:Request_ID: %s:RicoEnd", requestId));
++                                }
++
++                                mCurrentTopActivity = mStackSupervisor.getTopStackTopActivity();
++
++                                /**
++                                 * If an active activity is detected, the UI information from that
++                                 * activity will be dumped as JSON.
++                                 */
++                                if (mCurrentTopActivity == null) {
++                                    out.println(",\n\"activity_name\": null,");
++                                } else {
++                                    out.println(String.format(",\n\"activity_name\": \"%s\",",
++                                            mCurrentTopActivity.shortComponentName));
++                                    dumpActivityToStream(" ", threadFd, out, mCurrentTopActivity,
++                                            newArgs, false);
++                                }
++                                out.println("}");
++                                out.println("RICO_JSON_END");
++                                out.flush();
++                            }
++                        } // End of inner while loop (reads each line of input from client).
++                        Log.d("RICO", "RicoBegin:Closing Socket:RicoEnd");
++                        socket.close();
++                        if (stopServer) {
++                            break;
++                        }
++                    } // End of outer while loop (runs once for each client).
++                    Log.d("RICO", "RicoBegin:Stopping Server:RicoEnd");
++                    server.close();
++                } catch (IOException e) {
++                    e.printStackTrace();
++                }
++            }
++        });
++        sDumperThread.start();
++    }
++
++
+     /**
+      * Invokes IApplicationThread.dumpActivity() on the thread of the specified activity if
+      * there is a thread associated with the activity.
+@@ -14029,6 +14159,38 @@ public final class ActivityManagerService extends ActivityManagerNative
+         }
+     }
+ 
++    /**
++     * RICO: Calls the dumpActivity() method on the ActivityThread with an
++     * additional parameter called stream.
++     */
++    private void dumpActivityToStream(String prefix, FileDescriptor fd, PrintWriter pw,
++            final ActivityRecord r, String[] args, boolean dumpAll) {
++        String innerPrefix = prefix + "  ";
++
++        if (r.app != null && r.app.thread != null && pfd != null) {
++            // Flush anything that is already in the PrintWriter since the thread is going
++            // to write to the file descriptor directly.
++            pw.flush();
++            try {
++                TransferPipe tp = new TransferPipe();
++                FileDescriptor nfd = pfd.getFileDescriptor();
++                String[] newArgs = new String[args.length + 1];
++                newArgs[args.length] = "stream";
++                try {
++                    r.app.thread.dumpActivity(tp.getWriteFd().getFileDescriptor(),
++                            r.appToken, innerPrefix, newArgs);
++                    tp.go(nfd);
++                } finally {
++                    tp.kill();
++                }
++            } catch (IOException e) {
++                pw.println(innerPrefix + "Failure while dumping the activity: " + e);
++            } catch (RemoteException e) {
++                pw.println(innerPrefix + "Got a RemoteException while dumping the activity");
++            }
++        }
++    }
++
+     void dumpBroadcastsLocked(FileDescriptor fd, PrintWriter pw, String[] args,
+             int opti, boolean dumpAll, String dumpPackage) {
+         boolean needSep = false;
+diff --git a/services/core/java/com/android/server/am/ActivityStack.java b/services/core/java/com/android/server/am/ActivityStack.java
+index 6e34876..b049366 100644
+--- a/services/core/java/com/android/server/am/ActivityStack.java
++++ b/services/core/java/com/android/server/am/ActivityStack.java
+@@ -4206,6 +4206,22 @@ final class ActivityStack {
+         }
+     }
+ 
++    /**
++     * RICO: Gets the ActivityRecord of the activity that is at the top of the stack.
++     * The activity that is appended last to the list called mActivities is
++     * typically the current activity that is being used by the user.
++     */
++    ActivityRecord getCurrentTopActivity() {
++        if (mTaskHistory.size() == 0) {
++            return null;
++        }
++        TaskRecord topTask = mTaskHistory.get(mTaskHistory.size() - 1);
++        if (topTask.mActivities.size() == 0) {
++            return null;
++        }
++        return topTask.mActivities.get(topTask.mActivities.size() - 1);
++    }
++
+     boolean dumpActivitiesLocked(FileDescriptor fd, PrintWriter pw, boolean dumpAll,
+             boolean dumpClient, String dumpPackage, boolean needSep, String header) {
+         boolean printed = false;
+diff --git a/services/core/java/com/android/server/am/ActivityStackSupervisor.java b/services/core/java/com/android/server/am/ActivityStackSupervisor.java
+index 17a86ca..f0883b9 100644
+--- a/services/core/java/com/android/server/am/ActivityStackSupervisor.java
++++ b/services/core/java/com/android/server/am/ActivityStackSupervisor.java
+@@ -3554,6 +3554,24 @@ public final class ActivityStackSupervisor implements DisplayListener {
+         return false;
+     }
+ 
++
++    /*
++     * RICO: Gets the stacks of activities and calls the custom method getCurrentTopActivity()
++     * method to obtain the top activity of that stack. This is typically the activity that
++     * the user is interacting with.
++     */
++    ActivityRecord getTopStackTopActivity() {
++        if (mActivityDisplays.size() == 0) {
++            return null;
++        }
++        ActivityDisplay activityDisplay = mActivityDisplays.valueAt(0);
++        ArrayList<ActivityStack> stacks = activityDisplay.mStacks;
++        if (stacks.size() == 0) {
++            return null;
++        }
++        return stacks.get(stacks.size() - 1).getCurrentTopActivity();
++    }
++
+     boolean dumpActivitiesLocked(FileDescriptor fd, PrintWriter pw, boolean dumpAll,
+             boolean dumpClient, String dumpPackage) {
+         boolean printed = false;
+diff --git a/services/core/java/com/android/server/wm/WindowManagerService.java b/services/core/java/com/android/server/wm/WindowManagerService.java
+index c40947b..0d9b87a 100644
+--- a/services/core/java/com/android/server/wm/WindowManagerService.java
++++ b/services/core/java/com/android/server/wm/WindowManagerService.java
+@@ -3956,6 +3956,27 @@ public class WindowManagerService extends IWindowManager.Stub
+         return config;
+     }
+ 
++    /**
++     * Gets the flag associated with a given window.
++     *
++     * @return The flag of the currently focused window or -1 if the window does not exist.
++     */
++    public int getCurrentFlag() {
++        if (mCurrentFocus == null) {
++            return -1;
++        }
++        return mCurrentFocus.mAttrs.flags;
++    }
++
++    /**
++     * Gets state of the keyboard.
++     *
++     * @return True if the keyboard is deployed, false otherwise.
++     */
++    public boolean isKeyboardDeployed() {
++        return (mInputMethodWindow != null);
++    }
++
+     private Configuration updateOrientationFromAppTokensLocked(
+             Configuration currentConfig, IBinder freezeThisOneIfNeeded) {
+         if (!mDisplayReady) {
