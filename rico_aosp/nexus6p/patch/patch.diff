@@ -347,7 +347,7 @@ index 5994d4f..bd6127d 100644
 +    boolean isKeyboardDeployed();
  }
 diff --git a/core/java/android/view/View.java b/core/java/android/view/View.java
-index 720d9a8..596350d 100644
+index 720d9a8..6a1c499 100644
 --- a/core/java/android/view/View.java
 +++ b/core/java/android/view/View.java
 @@ -16,6 +16,7 @@
@@ -489,7 +489,7 @@ index 720d9a8..596350d 100644
 +        }
 +        obj.put("resource-id", resourceId);
 +        obj.put("package", pkgname);
-+        obj.append("content-desc", mContentDescription);
++        obj.put("content-desc", mContentDescription);
 +        return obj;
 +    }
 +
@@ -753,8 +753,101 @@ index 606168c..a428f3d 100644
      public String[] getViewRootNames() {
          synchronized (mLock) {
              final int numRoots = mRoots.size();
+diff --git a/core/java/android/widget/TextView.java b/core/java/android/widget/TextView.java
+index 0c4b60b..dfb95c4 100644
+--- a/core/java/android/widget/TextView.java
++++ b/core/java/android/widget/TextView.java
+@@ -144,6 +144,11 @@ import android.widget.RemoteViews.RemoteView;
+ import com.android.internal.util.FastMath;
+ import com.android.internal.widget.EditableInputConnection;
+ 
++import org.json.JSONArray;
++import org.json.JSONException;
++import org.json.JSONObject;
++import org.json.JSONStringer;
++
+ import org.xmlpull.v1.XmlPullParserException;
+ 
+ import java.io.IOException;
+@@ -3979,6 +3984,22 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
+         }
+     }
+ 
++    /**
++     * RICO: Adds a text field to the JSON object.
++     * @hide
++     */
++    @Override
++    public JSONObject toJson() throws JSONException {
++        Typeface tf = getTypeface();
++        JSONObject obj = super.toJson();
++        obj.put("text", mText);
++        if (tf != null) {
++            obj.put("font-family", tf.getFontFamilyName());
++        }
++        return obj;
++    }
++
++
+     @Override
+     public void drawableHotspotChanged(float x, float y) {
+         super.drawableHotspotChanged(x, y);
+diff --git a/graphics/java/android/graphics/Typeface.java b/graphics/java/android/graphics/Typeface.java
+index db42314..b8911af 100644
+--- a/graphics/java/android/graphics/Typeface.java
++++ b/graphics/java/android/graphics/Typeface.java
+@@ -73,6 +73,11 @@ public class Typeface {
+      */
+     public long native_instance;
+ 
++    /**
++     * RICO: Stores font family if it was specified when creating the Typeface.
++     */
++    private String mFontFamilyName = "default";
++
+     // Style
+     public static final int NORMAL = 0;
+     public static final int BOLD = 1;
+@@ -114,7 +119,10 @@ public class Typeface {
+      */
+     public static Typeface create(String familyName, int style) {
+         if (sSystemFontMap != null) {
+-            return create(sSystemFontMap.get(familyName), style);
++            // RICO
++            Typeface f = create(sSystemFontMap.get(familyName), style);
++            f.mFontFamilyName = familyName;
++            return f;
+         }
+         return null;
+     }
+@@ -161,6 +169,10 @@ public class Typeface {
+         }
+         styles.put(style, typeface);
+ 
++        if (family != null) {
++            typeface.mFontFamilyName = family.mFontFamilyName;
++        }
++
+         return typeface;
+     }
+ 
+@@ -373,6 +385,14 @@ public class Typeface {
+         return mStyle == typeface.mStyle && native_instance == typeface.native_instance;
+     }
+ 
++    /**
++     * RICO: Returns font family name.
++     * @hide
++     */
++    public String getFontFamilyName() {
++        return mFontFamilyName;
++    }
++
+     @Override
+     public int hashCode() {
+         /*
 diff --git a/services/core/java/com/android/server/am/ActivityManagerService.java b/services/core/java/com/android/server/am/ActivityManagerService.java
-index ba916ad..4f88c6e 100644
+index ba916ad..44d7e9e 100644
 --- a/services/core/java/com/android/server/am/ActivityManagerService.java
 +++ b/services/core/java/com/android/server/am/ActivityManagerService.java
 @@ -232,6 +232,7 @@ import android.view.WindowManager;
@@ -823,7 +916,7 @@ index ba916ad..4f88c6e 100644
              } else {
                  // Dumping a single activity?
                  if (!dumpActivity(fd, pw, cmd, args, opti, dumpAll)) {
-@@ -13991,6 +14018,109 @@ public final class ActivityManagerService extends ActivityManagerNative
+@@ -13991,6 +14018,110 @@ public final class ActivityManagerService extends ActivityManagerNative
          return true;
      }
  
@@ -891,7 +984,8 @@ index ba916ad..4f88c6e 100644
 +                                    Log.d("RICO", "RicoBegin:Request_ID: None:RicoEnd");
 +                                } else {
 +                                    out.print(String.format("{ \"request_id\": \"%s\"", requestId));
-+                                    Log.d("RICO", String.format("RicoBegin:Request_ID: %s:RicoEnd", requestId));
++                                    Log.d("RICO", String.format("RicoBegin:Request_ID: %s:RicoEnd",
++                                          requestId));
 +                                }
 +
 +                                mCurrentTopActivity = mStackSupervisor.getTopStackTopActivity();
@@ -933,7 +1027,7 @@ index ba916ad..4f88c6e 100644
      /**
       * Invokes IApplicationThread.dumpActivity() on the thread of the specified activity if
       * there is a thread associated with the activity.
-@@ -14029,6 +14159,38 @@ public final class ActivityManagerService extends ActivityManagerNative
+@@ -14029,6 +14160,38 @@ public final class ActivityManagerService extends ActivityManagerNative
          }
      }
  
