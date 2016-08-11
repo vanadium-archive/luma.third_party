@@ -189,6 +189,9 @@ module.exports = function(options) {
     .on(wire.DeviceLogcatEntryMessage, function(channel, message, data) {
       appDealer.send([channel, data])
     })
+    .on(wire.DeviceViewBridgeEntryMessage, function(channel, message, data) {
+      appDealer.send([channel, data]);
+    })
     .on(wire.AirplaneModeEvent, function(channel, message, data) {
       dbapi.setDeviceAirplaneMode(message.serial, message.enabled)
       appDealer.send([channel, data])

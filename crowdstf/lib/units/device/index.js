@@ -26,6 +26,7 @@ module.exports = function(options) {
         .dependency(require('./plugins/store'))
         .dependency(require('./plugins/clipboard'))
         .dependency(require('./plugins/logcat'))
+        .dependency(require('./plugins/viewbridge'))
         .dependency(require('./plugins/mute'))
         .dependency(require('./plugins/shell'))
         .dependency(require('./plugins/touch'))

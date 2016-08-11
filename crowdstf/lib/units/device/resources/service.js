@@ -3,6 +3,9 @@ var util = require('util')
 var syrup = require('stf-syrup')
 var ProtoBuf = require('protobufjs')
 var semver = require('semver')
+var adbkit = require('adbkit');
+var request = require('request');
+var viewBridgePorts = require('../viewbridgeports');
 
 var pathutil = require('../../../util/pathutil')
 var streamutil = require('../../../util/streamutil')
@@ -27,6 +30,35 @@ module.exports = syrup.serial()
         action: 'jp.co.cyberagent.stf.ACTION_START'
       , component: 'jp.co.cyberagent.stf/.Service'
       }
+    }
+
+    function initViewServer() {
+      log.info('Running CMD: adb shell dumpsys activity start-view-server');
+      adb.shell(options.serial, 'dumpsys activity start-view-server')
+          .then(adbkit.util.readAll)
+          .then(function(output) {
+            log.info('Success starting view server, messages: [%s]',
+                output.toString().trim());
+          });
+    }
+
+    function forwardTcpXml() {
+      log.info('Creating adb tcp view bridge port forward.');
+      var localPort = 'tcp:' + viewBridgePorts[options.serial] ||
+          viewBridgePorts.default;
+      var remotePort = 'tcp:' + viewBridgePorts.ANDROID_REMOTE;
+
+      // Remove any existing forwards per serial, then add new forward.
+      adb.shell(options.serial, 'forward --remove ' + localPort)
+          .then(function() {
+            log.info('Success removing ports for device %s', options.serial);
+            adb.forward(options.serial, localPort, remotePort)
+                .then(function(output) {
+                  log.info('Forwarded tcp xml port %s, messages: [%s]',
+                      localPort,
+                      output.toString().trim());
+                });
+          });
     }
 
     function getPath() {
@@ -96,6 +128,8 @@ module.exports = syrup.serial()
         })
     }
 
+    initViewServer();
+    forwardTcpXml();
     return install()
       .then(function(path) {
         log.info('STFService up to date')

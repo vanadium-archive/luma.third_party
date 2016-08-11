@@ -1,16 +1,19 @@
-var wire = require('../../wire')
+var wire = require('../../wire');
+var net = require('net');
 
 function LayoutCaptureService() {
   this.actionQueue = [];
 }
 
-LayoutCaptureService.prototype.enqueue = function(wireEvent, actionFn) {
+LayoutCaptureService.prototype.enqueue = function(wireEvent, actionFn,
+                                                  fetchView) {
   this.actionQueue.push({
     wireEvent: wireEvent,
-    actionFn: actionFn
+    actionFn: actionFn,
+    fetchView: fetchView
   });
   this.checkStartCaptures(wireEvent);
-}
+};
 
 LayoutCaptureService.prototype.dequeue = function() {
   if (this.actionQueue.length > 0) {
@@ -18,52 +21,37 @@ LayoutCaptureService.prototype.dequeue = function() {
   } else {
     return null;
   }
-}
+};
 
 LayoutCaptureService.prototype.checkStartCaptures = function() {
   if (this.actionQueue.length > 0 && !this.processing) {
     this.processing = true;
-    this.processStr = "";
+    layoutCaptureService.processStr = '';
     var nextItem = function() {
       var eventActionObj = layoutCaptureService.dequeue();
       if (eventActionObj) {
-        layoutCaptureService.processStr += " (" +
-          eventActionObj.wireEvent.$code + ") ";
+        layoutCaptureService.processStr += ' (' +
+            eventActionObj.wireEvent.$code + ') ';
         if (eventActionObj.wireEvent === wire.GestureStartMessage) {
-          console.log("Queueing gesture-start event")
-
-          layoutCaptureService.fetchLayout(function(err, res) {
+          eventActionObj.fetchView(function(err, layoutJSON) {
             if (err) {
               console.error(err);
             } else {
-              eventActionObj.actionFn(res)
-              nextItem()
+              eventActionObj.actionFn(layoutJSON);
+              nextItem();
             }
           });
         } else {
-          if (eventActionObj.wireEvent === wire.GestureStopMessage) {
-            console.log("Queueing gesture-stop event")
-          }
-
-          eventActionObj.actionFn()
-          nextItem()
+          eventActionObj.actionFn();
+          nextItem();
         }
       } else {
         layoutCaptureService.processing = false;
       }
-    }
+    };
 
     nextItem();
   }
-}
-
-LayoutCaptureService.prototype.fetchLayout = function(callback) {
-  //TODO(hibschman@): swap out this delay simulation stub with Device XML Fetch
-  var rand = Math.floor(Math.random() * (300 - 100 + 1) + 100);
-  console.log("Delay", rand, "millis")
-  setTimeout(function() {
-    callback(null, "<xml layout='mock'></xml>");
-  }, rand)
 };
 
 var layoutCaptureService = new LayoutCaptureService();

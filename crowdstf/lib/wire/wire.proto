@@ -6,6 +6,7 @@ enum MessageType {
   DeviceAbsentMessage        = 1;
   DeviceIdentityMessage      = 2;
   DeviceLogcatEntryMessage   = 3;
+  DeviceViewBridgeEntryMessage = 92;
   DeviceLogMessage           = 4;
   DeviceReadyMessage         = 5;
   DevicePresentMessage       = 6;
@@ -48,7 +49,10 @@ enum MessageType {
   ForwardCreateMessage       = 37;
   ForwardRemoveMessage       = 38;
   LogcatStartMessage         = 39;
+  ViewBridgeStartMessage     = 93;
   LogcatStopMessage          = 40;
+  ViewBridgeStopMessage      = 94;
+  ViewBridgeGetMessage       = 95;
   BrowserOpenMessage         = 41;
   BrowserClearMessage        = 42;
   AirplaneModeEvent          = 43;
@@ -365,10 +369,12 @@ message DeviceLogcatEntryMessage {
   required string serial = 1;
   required double date = 2;
   required uint32 pid = 3;
-  required uint32 tid = 4;
-  required uint32 priority = 5;
-  required string tag = 6;
-  required string message = 7;
+}
+
+message DeviceViewBridgeEntryMessage {
+  required string serial = 1;
+  required double date = 2;
+  required string message = 3;
 }
 
 message LogcatFilter {

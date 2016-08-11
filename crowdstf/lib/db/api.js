@@ -169,7 +169,7 @@ dbapi.saveDeviceLog = function(serial, entry) {
  */
 dbapi.saveDeviceEvent = function(deviceSerial, sessionId, eventName, imgId,
     timestamp, seq, contact, x, y, pressure, userEmail, userGroup, userIP,
-    userLastLogin, userName) {
+    userLastLogin, userName, viewHierarchy) {
   var deviceEventDTO = {
     serial: deviceSerial,
     sessionId: sessionId,
@@ -184,7 +184,8 @@ dbapi.saveDeviceEvent = function(deviceSerial, sessionId, eventName, imgId,
     userGroup: userGroup,
     userIP: userIP,
     userLastLogin: userLastLogin,
-    userName: userName
+    userName: userName,
+    viewHierarchy: viewHierarchy ? viewHierarchy : ''
   };
 
   return db.run(r.table('deviceEvents').insert(deviceEventDTO, {

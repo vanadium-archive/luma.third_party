@@ -26,6 +26,11 @@ var DeviceEventStore = require('./deviceeventstore')
 var deviceEventStore = new DeviceEventStore();
 var layoutCaptureService = require('./layoutcaptureservice')
 
+const START_LOGCAT_DELIM = 'RicoBegin';
+const START_DELIM_CHAR = START_LOGCAT_DELIM.substr(0, 1);
+const END_LOGCAT_DELIM = 'RicoEnd';
+const START_DELIM_LEN = START_LOGCAT_DELIM.length;
+const VIEW_JSON_END_DELIMITER = 'RICO_JSON_END';
 
 module.exports = function(options) {
   var log = logger.createLogger('websocket')
@@ -35,6 +40,8 @@ module.exports = function(options) {
       , transports: ['websocket']
       })
   var channelRouter = new events.EventEmitter()
+  var viewHierarchyJSON = '';
+  var viewResHandler = null;
 
   // Output
   var push = zmqutil.socket('push')
@@ -226,7 +233,28 @@ module.exports = function(options) {
         socket.emit('tx.done', channel.toString(), message)
       })
       .on(wire.DeviceLogcatEntryMessage, function(channel, message) {
-        socket.emit('logcat.entry', message)
+        var messageStr = message.message;
+        var serial = message.serial;
+        var date = message.date;
+
+        // Break the logcat messages out of their delimiters and save.
+        if (messageStr.indexOf(START_LOGCAT_DELIM) > -1) {
+          messageStr.split(START_LOGCAT_DELIM).forEach(function(item) {
+            if (item.indexOf(END_LOGCAT_DELIM) > -1) {
+              var logcatMessage = item.split(END_LOGCAT_DELIM)[0];
+
+              log.info('Saving logcat message: %s %s "%s"', serial, date,
+                  logcatMessage);
+              dbapi.saveLogcat(message.serial, date, logcatMessage);
+            }
+          });
+        }
+      })
+      .on(wire.DeviceViewBridgeEntryMessage, function(channel, message) {
+        viewHierarchyJSON += message.message;
+        if (message.message.indexOf(VIEW_JSON_END_DELIMITER) > -1) {
+          viewResHandler(viewHierarchyJSON);
+        }
       })
       .on(wire.AirplaneModeEvent, function(channel, message) {
         socket.emit('device.change', {
@@ -519,20 +547,27 @@ module.exports = function(options) {
 
         })
         .on('input.gestureStart', function(channel, data) {
-          layoutCaptureService.enqueue(wire.GestureStartMessage, function(xmlRes) {
-            console.log("Received XML:", xmlRes)
-
-            data.xml = xmlRes;
-            deviceEventStore.storeEvent('input.gestureStart', data);
-
-            push.send([
-              channel
-              , wireutil.envelope(new wire.GestureStartMessage(
-                data.seq
+          layoutCaptureService.enqueue(wire.GestureStartMessage, function() {
+            push.send([channel,
+              wireutil.envelope(new wire.GestureStartMessage(
+              data.seq
               ))
-            ])
-          });
+            ]);
+          }, function(callback) {
+            viewHierarchyJSON = '';
+            viewResHandler = function(viewHierarchy) {
+              data.viewHierarchy = viewHierarchy;
+              deviceEventStore.storeEvent('input.gestureStart', data);
+              callback();
+            };
 
+            // Send a request to the TCP view bridge.
+            push.send([channel,
+              wireutil.envelope(new wire.ViewBridgeGetMessage(
+                  data.imgId.split('_')[1]
+              ))
+            ]);
+          });
         })
         .on('input.gestureStop', function(channel, data) {
           layoutCaptureService.enqueue(wire.GestureStopMessage, function() {
