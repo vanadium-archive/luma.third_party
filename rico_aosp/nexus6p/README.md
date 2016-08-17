@@ -17,13 +17,13 @@ repo sync
 ### Patching the source files
 ```bash
 cd frameworks/base
-patch -p1 < $JIRI_ROOT/experimental/projects/rico_aosp/nexus6p/patch/patch.diff
+patch -p1 < $JIRI_ROOT/release/projects/luma_third_party/rico_aosp/nexus6p/patch/patch.diff
  ```
 
 If you plan on installing Google Play services or other GmsCore apps on this
 build, you should also apply the following patch that fixes permission issues.
 ```bash
-patch -p1 < vanadium/release/projects/luma_third_party/gapps_aosp_patch/patch.diff
+patch -p1 < $JIRI_ROOT/release/projects/luma_third_party/gapps_aosp_patch/patch.diff
  ```
 
 ### Downloading Nexus 6P binaries
