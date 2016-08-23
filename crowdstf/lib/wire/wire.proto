@@ -368,7 +368,7 @@ message RebootMessage {
 message DeviceLogcatEntryMessage {
   required string serial = 1;
   required double date = 2;
-  required uint32 pid = 3;
+  required string message = 3;
 }
 
 message DeviceViewBridgeEntryMessage {
@@ -384,9 +384,24 @@ message LogcatFilter {
 
 message LogcatStartMessage {
   repeated LogcatFilter filters = 1;
+  optional string appId = 2;
+}
+
+message ViewBridgeStartMessage {
+  repeated LogcatFilter filters = 1;
+  optional string appId = 2;
 }
 
 message LogcatStopMessage {
+  optional string appId = 1;
+}
+
+message ViewBridgeStopMessage {
+  optional string appId = 1;
+}
+
+message ViewBridgeGetMessage {
+  optional string seq = 1;
 }
 
 message LogcatApplyFiltersMessage {

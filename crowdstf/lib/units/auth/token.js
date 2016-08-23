@@ -73,14 +73,15 @@ module.exports = function(options) {
     app.use(basicAuthMiddleware);
   }
 
-  app.get('/auth/token/', function(req, res) {
+  var resetSession = function(req, res) {
     res.clearCookie('XSRF-TOKEN');
     res.clearCookie('ssid');
     res.clearCookie('ssid.sig');
-    res.status(401);
-    res.send('401 Unauthorized, your auth token may have been expired.');
-  });
+    res.redirect('/task-end');
+  };
 
+  app.get('/auth/token', resetSession);
+  app.get('/auth/token/', resetSession);
   app.get('/auth/token/:token', function(req, res) {
     res.clearCookie('XSRF-TOKEN');
     res.clearCookie('ssid');
@@ -89,7 +90,7 @@ module.exports = function(options) {
     if (token) {
       // Check if token is in db and is valid.
       dbapi.getToken(token).then(function(tokenObj) {
-        if (tokenObj) {
+        if (tokenObj && tokenObj.status === 'unused') {
           var log = logger.createLogger('auth-token');
           log.setLocalIdentifier(req.ip);
 
@@ -126,11 +127,12 @@ module.exports = function(options) {
           setTimeout(function() {
             console.log('Kicking user, reached timeout for token',
                         tokenObj.token);
-            request(options.appUrl + '/app/api/v1/expireToken/' +
+            request.delete(options.appUrl + '/app/api/v1/token/' +
                     tokenObj.token + '?authed=true',
-                    function(error, response, body) {
-                      if (error) {
-                        throw error;
+                    function(err, res) {
+                      if (err) {
+                        log.error('Error kicking user token ', tokenObj.token,
+                            err.stack);
                       }
                     });
           }, tokenObj.expireMinutes * MILLIS_IN_ONE_MINUTE);
@@ -143,15 +145,11 @@ module.exports = function(options) {
           res.redirect(authRedirURL);
         }
         else {
-          return res.json(401, {
-            success: false
-          });
+          return resetSession(req, res);
         }
       }).catch(function(err) {
         log.error('Failed to load token "%s": ', token, err.stack);
-        return res.json(500, {
-          success: false
-        });
+        return res.redirect('/task-end');
       });
     } else {
       return res.status(400).json({

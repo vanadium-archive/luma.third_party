@@ -6,6 +6,10 @@ var wire = require('../../../wire');
 var wireutil = require('../../../wire/util');
 var lifecycle = require('../../../util/lifecycle');
 var viewBridgePorts = require('../viewbridgeports');
+var config = require('../../../../config');
+var _ = require('underscore');
+
+viewBridgePorts = _.extend(viewBridgePorts, config.viewBridgePorts);
 
 // Localhost binding complies with STF spec, placing
 // the device threads on the same host as adb.

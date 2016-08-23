@@ -1,10 +1,12 @@
-var util = require('util')
-var path = require('path')
-var fs = require('fs')
-var mkdirp = require('mkdirp')
+var util = require('util');
+var path = require('path');
+var fs = require('fs');
+var mkdirp = require('mkdirp');
 
-var FINAL_SCREEN_SHOT_DIR = path.join(appRoot, "/../screen_shots/")
-mkdirp.sync(FINAL_SCREEN_SHOT_DIR)
+// Default to the global app root, otherwise fallback on the cwd.
+var FINAL_SCREEN_SHOT_DIR = path.join(global.appRoot || '.',
+    '/../screen_shots/');
+mkdirp.sync(FINAL_SCREEN_SHOT_DIR);
 
 function FrameStore() {
   this.sessionImgCountMap = {};
@@ -19,8 +21,8 @@ FrameStore.prototype.storeFrame = function(frame, sessionId) {
 
   var sessionImgNumber = this.sessionImgCountMap[sessionId];
   var fileName = util.format('%s_%s_%d.jpg', sessionId, sessionImgNumber,
-    Date.now());
-  var filePath = path.join(FINAL_SCREEN_SHOT_DIR, fileName)
+      Date.now());
+  var filePath = path.join(FINAL_SCREEN_SHOT_DIR, fileName);
 
   fs.writeFile(filePath, frame, function(err) {
     if (err) {
@@ -29,6 +31,6 @@ FrameStore.prototype.storeFrame = function(frame, sessionId) {
   });
 
   return fileName;
-}
+};
 
-module.exports = FrameStore
+module.exports = FrameStore;

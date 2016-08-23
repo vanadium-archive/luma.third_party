@@ -63,4 +63,10 @@ module.exports = {
 , kicks: {
     primaryKey: 'id'
   }
+, tokenLogcats: {
+    primaryKey: 'id'
+  }
+, deviceApps: {
+    primaryKey: 'appId'
+  }
 }

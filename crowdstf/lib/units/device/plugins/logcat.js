@@ -17,49 +17,78 @@ module.exports = syrup.serial()
     var plugin = Object.create(null)
     var activeLogcat = null
 
-    var openLogcat = function(serial) {
+    var openLogcat = function(serial, appId) {
       return new Promise(function(resolve, reject) {
-        log.info('adb logcat opening stream.');
-
-        // Flag -c clears backlogged output.
-        // Flag -s specifies the device serial.
-        // Option 2>/dev/null ignores process err messages.
-        var psClear = spawn('adb', [
-          '-s',
-          options.serial,
-          'logcat',
-          '-c',
-          '2>/dev/null'
-        ]);
-
-        psClear.on('close', function(exitCode) {
+        var launchLogcat = function(exitCode) {
           if (exitCode === 0) {
-            // Flag *:D provide info level Debug and higher.
-            // Other flags include
-            // (V)erbose (D)ebug (I)nfo (W)arning (E)rror (F)atal.
-            var logcat = spawn('adb', ['-s',
-              serial,
+            log.info('adb logcat opening stream.');
+
+            // Flag -c clears backlogged output.
+            // Flag -s specifies the device serial.
+            // Option 2>/dev/null ignores process err messages.
+            var psClear = spawn('adb', [
+              '-s',
+              options.serial,
               'logcat',
-              '*:D',
+              '-c',
               '2>/dev/null'
             ]);
 
-            resolve(logcat);
+            psClear.on('close', function(exitCode) {
+              if (exitCode === 0) {
+                // Flag *:D provide info level Debug and higher.
+                // Other flags include
+                // (V)erbose (D)ebug (I)nfo (W)arning (E)rror (F)atal.
+                var logcat = spawn('adb', ['-s',
+                  serial,
+                  'logcat',
+                  '*:D',
+                  '2>/dev/null'
+                ]);
+
+                resolve(logcat);
+              } else {
+                reject();
+                throw Error('Unable to access adb logcat clear process');
+              }
+            });
           } else {
             reject();
-            throw Error('Unable to access adb logcat clear process');
+            throw Error('Unable to access adb app launch process');
           }
-        });
+        };
+
+        if (appId) {
+          log.info('adb launching app %s.', appId);
+          var psAppLaunch = spawn('adb', [
+            '-s',
+            options.serial,
+            'shell',
+            'monkey',
+            '-p',
+            appId,
+            '-c',
+            'android.intent.category.LAUNCHER',
+            '1',
+            '2>/dev/null'
+          ]);
+
+          psAppLaunch.on('close', launchLogcat);
+        } else {
+          launchLogcat(0);
+        }
+      }).catch(function(err) {
+        log.error('Cannot get next free app to launch.', err.stack);
       });
     };
 
-    plugin.start = function(filters) {
+    plugin.start = function(filters, appId) {
       return group.get()
         .then(function(group) {
           return plugin.stop()
             .then(function() {
               log.info('Starting logcat')
-              return openLogcat(options.serial);
+              return openLogcat(options.serial, appId);
             })
             .then(function(logcat) {
               activeLogcat = logcat;
@@ -71,10 +100,6 @@ module.exports = syrup.serial()
                     wireutil.envelope(new wire.DeviceLogcatEntryMessage(
                       options.serial,
                       new Date().getTime(),
-                      0,
-                      0,
-                      '',
-                      '',
                       entry.toString()
                     ))
                   ]);
@@ -89,8 +114,30 @@ module.exports = syrup.serial()
         });
     };
 
-    plugin.stop = Promise.method(function() {
+    plugin.stop = Promise.method(function(appId) {
       if (plugin.isRunning()) {
+        if (appId) {
+          log.info('adb killing app %s', appId);
+          var arrArgs = [
+            '-s',
+            options.serial,
+            'shell',
+            'am',
+            'force-stop',
+            appId,
+            '2>/dev/null'
+          ];
+
+          var psKill = spawn('adb', arrArgs);
+          psKill.on('close', function(exitCode) {
+            if (exitCode === 0) {
+              log.info('adb killed app %s', appId);
+            } else {
+              log.error('adb error killing app %s', appId);
+            }
+          });
+        }
+
         log.info('Stopping logcat')
         activeLogcat.kill();
         activeLogcat = null
@@ -111,7 +158,7 @@ module.exports = syrup.serial()
     router
       .on(wire.LogcatStartMessage, function(channel, message) {
         var reply = wireutil.reply(options.serial)
-        plugin.start(message.filters)
+        plugin.start(message.filters, message.appId)
           .then(function() {
             push.send([
               channel
@@ -143,9 +190,9 @@ module.exports = syrup.serial()
             ])
           })
       })
-      .on(wire.LogcatStopMessage, function(channel) {
+      .on(wire.LogcatStopMessage, function(channel, message) {
         var reply = wireutil.reply(options.serial)
-        plugin.stop()
+        plugin.stop(message.appId)
           .then(function() {
             push.send([
               channel

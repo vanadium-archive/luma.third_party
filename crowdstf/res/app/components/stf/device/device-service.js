@@ -153,7 +153,6 @@ module.exports = function DeviceServiceFactory($http, $cookies, socket,
       $cookies.remove('ssid');
       $cookies.remove('ssid.sig');
       window.location.reload();
-      $scope.destroy();
     });
 
     this.add = function(device) {

@@ -31,40 +31,41 @@ module.exports = syrup.serial()
     })
 
     plugin.join = function(newGroup, timeout, identifier) {
-      return plugin.get()
-        .then(function() {
-          if (currentGroup.group !== newGroup.group) {
-            throw new grouputil.AlreadyGroupedError()
-          }
+      var joinNewGroup = function() {
+        currentGroup = newGroup;
 
-          return currentGroup
-        })
-        .catch(grouputil.NoGroupError, function() {
-          currentGroup = newGroup
+        log.important('Now owned by "%s".', currentGroup.email);
+        log.info('Subscribing to group channel "%s".', currentGroup.group);
 
-          log.important('Now owned by "%s"', currentGroup.email)
-          log.info('Subscribing to group channel "%s"', currentGroup.group)
+        channels.register(currentGroup.group, {
+          timeout: timeout || options.groupTimeout,
+          alias: solo.channel
+        });
 
-          channels.register(currentGroup.group, {
-            timeout: timeout || options.groupTimeout
-          , alias: solo.channel
-          })
+        sub.subscribe(currentGroup.group);
 
-          sub.subscribe(currentGroup.group)
+        push.send([
+          wireutil.global,
+          wireutil.envelope(new wire.JoinGroupMessage(
+              options.serial,
+              currentGroup))
+        ]);
 
-          push.send([
-            wireutil.global
-          , wireutil.envelope(new wire.JoinGroupMessage(
-              options.serial
-            , currentGroup
-            ))
-          ])
+        plugin.emit('join', currentGroup, identifier);
 
-          plugin.emit('join', currentGroup, identifier)
+        return currentGroup;
+      };
 
-          return currentGroup
-        })
-    }
+      return plugin.get().then(function() {
+        if (currentGroup.group !== newGroup.group) {
+          return plugin.leave('kick').then(function() {
+            return joinNewGroup();
+          });
+        }
+
+        return currentGroup;
+      }).catch(grouputil.NoGroupError, joinNewGroup);
+    };
 
     plugin.keepalive = function() {
       if (currentGroup) {

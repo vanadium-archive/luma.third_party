@@ -1,34 +1,54 @@
 var wire = require('../../wire');
 var net = require('net');
+var logger = require('../../util/logger');
+var log = logger.createLogger('layoutcaptureservice');
 
 function LayoutCaptureService() {
-  this.actionQueue = [];
+  this.serialActions = {};
+  this.serialProcessing = {};
 }
 
 LayoutCaptureService.prototype.enqueue = function(wireEvent, actionFn,
-                                                  fetchView) {
-  this.actionQueue.push({
+                                                  fetchView, serial) {
+  if (!serial) {
+    log.warn('No serial provided for wire event %s', wireEvent);
+    return actionFn();
+  }
+
+  if (!this.serialActions[serial]) {
+    this.serialActions[serial] = [];
+  }
+
+  this.serialActions[serial].push({
     wireEvent: wireEvent,
     actionFn: actionFn,
     fetchView: fetchView
   });
-  this.checkStartCaptures(wireEvent);
+  this.checkStartCaptures(serial);
 };
 
-LayoutCaptureService.prototype.dequeue = function() {
-  if (this.actionQueue.length > 0) {
-    return this.actionQueue.shift();
+LayoutCaptureService.prototype.dequeue = function(serial) {
+  if (!this.validSerialQueue(serial)) {
+    return;
+  }
+
+  if (this.serialActions[serial].length > 0) {
+    return this.serialActions[serial].shift();
   } else {
     return null;
   }
 };
 
-LayoutCaptureService.prototype.checkStartCaptures = function() {
-  if (this.actionQueue.length > 0 && !this.processing) {
-    this.processing = true;
+LayoutCaptureService.prototype.checkStartCaptures = function(serial) {
+  if (!this.validSerialQueue(serial)) {
+    return;
+  }
+
+  if (this.serialActions[serial].length > 0 && !this.serialProcessing[serial]) {
+    this.serialProcessing[serial] = true;
     layoutCaptureService.processStr = '';
     var nextItem = function() {
-      var eventActionObj = layoutCaptureService.dequeue();
+      var eventActionObj = layoutCaptureService.dequeue(serial);
       if (eventActionObj) {
         layoutCaptureService.processStr += ' (' +
             eventActionObj.wireEvent.$code + ') ';
@@ -46,11 +66,31 @@ LayoutCaptureService.prototype.checkStartCaptures = function() {
           nextItem();
         }
       } else {
-        layoutCaptureService.processing = false;
+        layoutCaptureService.serialProcessing[serial] = false;
       }
     };
 
     nextItem();
+  }
+};
+
+LayoutCaptureService.prototype.validSerialQueue = function(serial) {
+  if (serial) {
+    if (this.serialActions[serial]) {
+      return true;
+    } else {
+      log.error('Serial queue not found for serial: %s', serial);
+      return false;
+    }
+  } else {
+    log.error('Missing serial for dequeue action: %s');
+    return false;
+  }
+};
+
+LayoutCaptureService.prototype.resetSerial = function(serial) {
+  if (serial) {
+    this.serialActions[serial] = [];
   }
 };
 

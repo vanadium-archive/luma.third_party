@@ -279,3 +279,33 @@ device-screen input {
   -ms-transition: none !important;
   transition: none !important;
 }
+
+.exitSession {
+  background-color: #5cb85c;
+  border-color: #5cb85c;
+  border-radius: 3px;
+  text-decoration: none;
+  color: white;
+  padding: .375rem 1rem;
+  float: right;
+}
+
+.remote-debug-textarea {
+  overflow: hidden;
+  word-wrap: break-word;
+  resize: none;
+  height: 31px;
+}
+
+.widget-bolder {
+  font-weight: bold;
+}
+
+.app-header {
+  color: green;
+}
+
+.submit-area.hit {
+  height: 39px;
+  padding-right: 16px;
+}

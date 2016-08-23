@@ -27,6 +27,8 @@ module.exports = function DeviceScreenDirective(
 
       var device = scope.device()
       var control = scope.control()
+      var filterSet = [];
+      control.startLogcat(filterSet);
 
       var input = element.find('input')
 

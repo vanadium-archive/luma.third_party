@@ -39,8 +39,11 @@ module.exports = angular.module('control-panes', [
       })
   }])
   .factory('ControlPanesService', require('./control-panes-service'))
+  .factory('CrowdFeedbackService', require('./crowd-feedback-service'))
   .controller('ControlPanesCtrl', require('./control-panes-controller'))
   .controller('ControlPanesNoDeviceController',
-  require('./control-panes-no-device-controller'))
+    require('./control-panes-no-device-controller'))
   .controller('ControlPanesHotKeysCtrl',
-  require('./control-panes-hotkeys-controller'))
+    require('./control-panes-hotkeys-controller'))
+  .controller('CrowdFeedbackCtrl',
+    require('./crowd-feedback-controller.js'));

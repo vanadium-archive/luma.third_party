@@ -1,6 +1,8 @@
 doctype html
 html(ng-app='app')
   head
+    script.
+      window.stfConfig = JSON.parse('!{stfConfig}');
     meta(charset='utf-8')
     base(href='/')
     meta(name='viewport', content='width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no')
@@ -11,7 +13,7 @@ html(ng-app='app')
     meta(name='apple-mobile-web-app-status-bar-style', content='black-translucent')
     link(href='static/logo/exports/STF-128.png', rel='apple-touch-icon')
 
-    title(ng-bind='pageTitle ? "STF - " + pageTitle : "STF"') STF
+    title CrowdSTF
   body(ng-cloak).bg-1.fill-height.unselectable
     div(ng-controller='LayoutCtrl', basic-mode, admin-mode, standalone, landscape).fill-height
       .pane-top.fill-height(fa-pane)

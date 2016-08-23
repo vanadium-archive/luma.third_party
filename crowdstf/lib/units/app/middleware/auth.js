@@ -46,6 +46,18 @@ module.exports = function(options) {
         })
         .catch(next)
     }
+    // Authenticate mock sessions in development.
+    else if (req.query.authed) {
+      req.user = {
+        name: 'auth',
+        email: 'auth',
+        ip: 'auth'
+      };
+
+      req.session.jwt = req.user;
+
+      next();
+    }
     else {
       // No session, forward to auth client
       res.redirect(options.authUrl)

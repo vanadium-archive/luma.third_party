@@ -1,6 +1,7 @@
 var deviceData = require('stf-device-db')
 var browserData = require('stf-browser-db')
-
+var config = require('../../config');
+var _ = require('underscore');
 var logger = require('./logger')
 
 var log = logger.createLogger('util:datautil')
@@ -13,6 +14,16 @@ datautil.applyData = function(device) {
   , name: device.product
   })
 
+  if (!match && config.deviceModels) {
+    var cfModel = _(config.deviceModels).find(function(dm) {
+      return dm.model === device.model;
+    });
+
+    if (cfModel) {
+      match = cfModel;
+    }
+  }
+
   if (match) {
     device.name = match.name.id
     device.releasedAt = match.date
@@ -20,8 +31,8 @@ datautil.applyData = function(device) {
     device.cpu = match.cpu
     device.memory = match.memory
     if (match.display && match.display.s) {
-      device.display = device.display || {}
       device.display.inches = match.display.s
+      device.display = device.display || {};
     }
   }
   else {

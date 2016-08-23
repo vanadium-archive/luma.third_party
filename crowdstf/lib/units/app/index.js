@@ -16,6 +16,7 @@ var logger = require('../../util/logger')
 var pathutil = require('../../util/pathutil')
 var dbapi = require('../../db/api')
 var datautil = require('../../util/datautil')
+var config = require('../../../config');
 
 var auth = require('./middleware/auth')
 var deviceIconMiddleware = require('./middleware/device-icons')
@@ -77,6 +78,10 @@ module.exports = function(options) {
   , keys: [options.secret]
   }))
 
+  app.get('/task-end', function(req, res) {
+    res.render('taskend', {contactEmail: config.hitAccounts.contactEmail});
+  });
+
   app.use(auth({
     secret: options.secret
   , authUrl: options.authUrl
@@ -89,6 +94,37 @@ module.exports = function(options) {
     res.send('OK')
   })
 
+  var expireToken = function(token, res) {
+    dbapi.expireToken(token).then(function() {
+      res.sendStatus(200);
+    }).catch(function(err) {
+      log.error('Error expiring token: ', err.stack);
+      res.sendStatus(500);
+    });
+  };
+
+  app.delete('/app/api/v1/token/:token', function(req, res) {
+    var token = req.params.token;
+
+    expireToken(token, res);
+  });
+
+  app.delete('/app/api/v1/token', function(req, res) {
+    var serial = req.query.serial;
+
+    dbapi.getDeviceBySerial(serial).then(function(device) {
+      if (device && device.owner && device.owner.email) {
+        expireToken(device.owner.email, res);
+      } else {
+        res.status(404);
+        res.send('No owner found for serial: ' + serial);
+      }
+    }).catch(function(err) {
+      log.error('Failed to get device by serial: ', err.stack);
+      res.sendStatus(500);
+    });
+  });
+
   app.use(bodyParser.json())
   app.use(csrf())
   app.use(validator())
@@ -99,7 +135,7 @@ module.exports = function(options) {
   })
 
   app.get('/', function(req, res) {
-    res.render('index')
+    res.render('index', {stfConfig: JSON.stringify(config || {})});
   })
 
   app.get('/app/api/v1/state.js', function(req, res) {
@@ -152,28 +188,6 @@ module.exports = function(options) {
         })
       })
   })
-
-  app.delete('/app/api/v1/token/:token', function(req, res) {
-    var token = req.params.token;
-
-    dbapi.getToken(token).then(function(tokenObj) {
-      if (tokenObj.status === 'expired') {
-        return res.send(200);
-      }
-
-      var serial = tokenObj.serial;
-
-      dbapi.deleteUser(token).then(function() {
-        dbapi.expireToken(token).then(function() {
-          dbapi.publishKickedSerial(serial).then(function() {
-            dbapi.unsetDeviceOwner(serial).then(function() {
-              res.send(200);
-            });
-          });
-        });
-      });
-    });
-  });
 
   app.get('/app/api/v1/devices', function(req, res) {
     dbapi.loadDevices()
@@ -244,6 +258,26 @@ module.exports = function(options) {
         })
       })
   })
+
+  // Tilde pattern is REST shorthand for "my", e.g. get my token.
+  app.get('/app/api/v1/token/~', function(req, res) {
+    if (!req.user || !req.user.email) {
+      res.status(404);
+      return res.send('Missing user email in request.');
+    }
+
+    dbapi.getToken(req.user.email).then(function(tokenObj) {
+      if (tokenObj) {
+        res.json(tokenObj);
+      } else {
+        res.status(404);
+        res.send('Token not found for email: ' + req.user.email);
+      }
+    }).catch(function(err) {
+      log.error('Failed to get token: ', err.stack);
+      res.sendStatus(500);
+    });
+  });
 
   server.listen(options.port)
   log.info('Listening on port %d', options.port)

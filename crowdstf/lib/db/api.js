@@ -6,8 +6,14 @@ var wireutil = require('../wire/util')
 
 var dbapi = Object.create(null)
 
+const MIN_TOKEN_LEN = 20;
+
 db.connect().then(function(conn) {
   r.table('kicks').changes().run(conn, function(err, cursor) {
+    if (!cursor) {
+      return;
+    }
+
     cursor.each(function(err, item) {
       if (dbapi.kickCallback) {
         dbapi.kickCallback(item.new_val.serial);
@@ -158,7 +164,7 @@ dbapi.saveDeviceLog = function(serial, entry) {
 /**
  * Persists android device events
  * @example
- *   dbapi.saveDeviceEvent("foo", "bar"....)
+ *   dbapi.saveDeviceEvent(eventObj)
  *   .then(function(result) {
  *     console.log("Saved", result.inserted, "device events");
  *   })
@@ -167,31 +173,11 @@ dbapi.saveDeviceLog = function(serial, entry) {
  *   })
  * @returns {Promise} Returns a promise with RethinkDB result
  */
-dbapi.saveDeviceEvent = function(deviceSerial, sessionId, eventName, imgId,
-    timestamp, seq, contact, x, y, pressure, userEmail, userGroup, userIP,
-    userLastLogin, userName, viewHierarchy) {
-  var deviceEventDTO = {
-    serial: deviceSerial,
-    sessionId: sessionId,
-    eventName: eventName,
-    imgId: imgId,
-    timestamp: timestamp,
-    seq: seq === undefined ? null : seq,
-    x: x === undefined ? null : x,
-    y: y === undefined ? null : y,
-    pressure: (pressure === undefined ? null : pressure),
-    userEmail: userEmail,
-    userGroup: userGroup,
-    userIP: userIP,
-    userLastLogin: userLastLogin,
-    userName: userName,
-    viewHierarchy: viewHierarchy ? viewHierarchy : ''
-  };
-
-  return db.run(r.table('deviceEvents').insert(deviceEventDTO, {
+dbapi.saveDeviceEvent = function(deviceEvent) {
+  return db.run(r.table('deviceEvents').insert(deviceEvent, {
     durability: 'soft'
-  }))
-}
+  }));
+};
 
 dbapi.saveDeviceInitialState = function(serial, device) {
   var data = {
@@ -222,7 +208,23 @@ dbapi.saveDeviceStatus = function(serial, status) {
   }))
 }
 
-dbapi.getDeviceOwner = function(serial) {
+dbapi.saveLogcat = function(serial, date, logcatMessage) {
+  db.run(r.table('devices').get(serial)).then(function(device) {
+    if (device && device.owner && device.owner.email) {
+      var token = device.owner.email;
+      if (token && token.length > MIN_TOKEN_LEN) {
+        return db.run(r.table('tokenLogcats').insert({
+          token: token,
+          logcatMessage: logcatMessage,
+          logcatDate: date,
+          timestamp: new Date().getTime()
+        }));
+      }
+    }
+  });
+};
+
+dbapi.getDeviceBySerial = function(serial) {
   return db.run(r.table('devices').get(serial));
 };
 
@@ -397,15 +399,44 @@ dbapi.getToken = function(token) {
   return db.run(r.table('tokens').get(token));
 };
 
+dbapi.getAppIdBySerial = function(serial, callback) {
+  db.run(r.table('tokens').filter({
+      serial: serial
+    }
+  ).orderBy(r.desc('creationTime')).limit(1)).then(function(cursor) {
+    cursor.toArray(function(err, results) {
+      if (err || !results.length) {
+        return callback('Error fetching app from serial.');
+      }
+
+      callback(null, results[0].appId);
+    });
+  });
+};
+
 dbapi.updateToken = function(tokenObj) {
   return db.run(r.table('tokens').get(tokenObj.token).update(tokenObj));
 };
 
 dbapi.expireToken = function(token) {
-  return db.run(r.table('tokens').get(token).update({
-    status: "expired",
-    expiredTime: Date.now()
-  }));
+  var serial;
+
+  return dbapi.getToken(token).then(function(tokenObj) {
+    if (tokenObj.status !== 'expired') {
+      serial = tokenObj.serial;
+
+      return db.run(r.table('tokens').get(token).update({
+        status: "expired",
+        expiredTime: Date.now()
+      }));
+    }
+  }).then(function() {
+    return dbapi.deleteUser(token);
+  }).then(function() {
+    return dbapi.publishKickedSerial(serial);
+  }).then(function() {
+    return dbapi.unsetDeviceOwner(serial);
+  });
 };
 
 module.exports = dbapi

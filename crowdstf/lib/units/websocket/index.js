@@ -100,6 +100,7 @@ module.exports = function(options) {
 
   dbapi.setKickCallback(function(serial) {
     io.sockets.emit('forceKick', serial);
+    layoutCaptureService.resetSerial(serial);
   });
 
   io.on('connection', function(socket) {
@@ -120,17 +121,6 @@ module.exports = function(options) {
       _.pull(channels, channel)
       channelRouter.removeListener(channel, messageListener)
       sub.unsubscribe(channel)
-    }
-
-    function createKeyHandler(Klass) {
-      return function(channel, data) {
-        push.send([
-          channel
-        , wireutil.envelope(new Klass(
-            data.key
-          ))
-        ])
-      }
     }
 
     var messageListener = wirerouter()
@@ -242,9 +232,6 @@ module.exports = function(options) {
           messageStr.split(START_LOGCAT_DELIM).forEach(function(item) {
             if (item.indexOf(END_LOGCAT_DELIM) > -1) {
               var logcatMessage = item.split(END_LOGCAT_DELIM)[0];
-
-              log.info('Saving logcat message: %s %s "%s"', serial, date,
-                  logcatMessage);
               dbapi.saveLogcat(message.serial, date, logcatMessage);
             }
           });
@@ -489,7 +476,7 @@ module.exports = function(options) {
                 , data.pressure
               ))
             ])
-          });
+          }, null, data.serial);
         })
         .on('input.touchMove', function(channel, data) {
           layoutCaptureService.enqueue(wire.TouchMoveMessage, function() {
@@ -504,7 +491,7 @@ module.exports = function(options) {
                 , data.pressure
               ))
             ])
-          });
+          }, null, data.serial);
         })
         .on('input.touchUp', function(channel, data) {
           layoutCaptureService.enqueue(wire.TouchUpMessage, function() {
@@ -517,7 +504,7 @@ module.exports = function(options) {
                 , data.contact
               ))
             ])
-          });
+          }, null, data.serial);
 
         })
         .on('input.touchCommit', function(channel, data) {
@@ -530,7 +517,7 @@ module.exports = function(options) {
                 data.seq
               ))
             ])
-          });
+          }, null, data.serial);
 
         })
         .on('input.touchReset', function(channel, data) {
@@ -543,8 +530,7 @@ module.exports = function(options) {
                 data.seq
               ))
             ])
-          });
-
+          }, null, data.serial);
         })
         .on('input.gestureStart', function(channel, data) {
           layoutCaptureService.enqueue(wire.GestureStartMessage, function() {
@@ -567,7 +553,7 @@ module.exports = function(options) {
                   data.imgId.split('_')[1]
               ))
             ]);
-          });
+          }, data.serial);
         })
         .on('input.gestureStop', function(channel, data) {
           layoutCaptureService.enqueue(wire.GestureStopMessage, function() {
@@ -579,16 +565,48 @@ module.exports = function(options) {
                 data.seq
               ))
             ])
-          });
-
+          }, null, data.serial);
         })
         // Key events
-        .on('input.keyDown', createKeyHandler(wire.KeyDownMessage))
-        .on('input.keyUp', createKeyHandler(wire.KeyUpMessage))
-        .on('input.keyPress', createKeyHandler(wire.KeyPressMessage))
+        .on('input.keyDown', function(channel, data) {
+          layoutCaptureService.enqueue(wire.KeyDownMessage, function() {
+            deviceEventStore.storeEvent('input.keyDown', data);
+
+            push.send([
+              channel,
+              wireutil.envelope(new wire.KeyDownMessage(
+                  data.key
+              ))
+            ]);
+          }, null, data.serial);
+        })
+        .on('input.keyUp', function(channel, data) {
+          layoutCaptureService.enqueue(wire.KeyUpMessage, function() {
+            deviceEventStore.storeEvent('input.keyUp', data);
+
+            push.send([
+              channel,
+              wireutil.envelope(new wire.KeyUpMessage(
+                  data.key
+              ))
+            ]);
+          }, null, data.serial);
+        })
+        .on('input.keyPress', function(channel, data) {
+          layoutCaptureService.enqueue(wire.KeyPressMessage, function() {
+            deviceEventStore.storeEvent('input.keyPress', data);
+
+            push.send([
+              channel,
+              wireutil.envelope(new wire.KeyPressMessage(
+                  data.key
+              ))
+            ]);
+          }, null, data.serial);
+        })
         .on('input.type', function(channel, data) {
           layoutCaptureService.enqueue(wire.TypeMessage, function() {
-            deviceEventStore.storeEvent('input.keyPress', data);
+            deviceEventStore.storeEvent('input.type', data);
 
             push.send([
               channel
@@ -596,7 +614,7 @@ module.exports = function(options) {
                 data.text
               ))
             ])
-          });
+          }, null, data.serial);
         })
         .on('display.rotate', function(channel, data) {
           layoutCaptureService.enqueue(wire.RotateMessage, function() {
@@ -606,7 +624,7 @@ module.exports = function(options) {
                 data.rotation
               ))
             ])
-          })
+          }, null, data.serial);
         })
         // Transactions
         .on('clipboard.paste', function(channel, responseChannel, data) {
@@ -621,21 +639,17 @@ module.exports = function(options) {
                 , new wire.PasteMessage(data.text)
               )
             ])
-          });
+          }, null, data.serial);
         })
         .on('clipboard.copy', function(channel, responseChannel) {
-          layoutCaptureService.enqueue(wire.CopyMessage, function() {
-            deviceEventStore.storeEvent('clipboard.copy', {});
-
-            joinChannel(responseChannel)
-            push.send([
-              channel
-              , wireutil.transaction(
-                responseChannel
-                , new wire.CopyMessage()
-              )
-            ])
-          });
+          joinChannel(responseChannel);
+          push.send([
+            channel,
+            wireutil.transaction(
+                responseChannel,
+                new wire.CopyMessage()
+            )
+          ]);
         })
         .on('device.identify', function(channel, responseChannel) {
           push.send([
@@ -892,24 +906,55 @@ module.exports = function(options) {
           ])
         })
         .on('logcat.start', function(channel, responseChannel, data) {
-          joinChannel(responseChannel)
-          push.send([
-            channel
-          , wireutil.transaction(
-              responseChannel
-            , new wire.LogcatStartMessage(data)
-            )
-          ])
+          log.info('Starting logcat service.');
+          joinChannel(responseChannel);
+
+          dbapi.getAppIdBySerial(data.serial, function(err, appId) {
+            if (err || !appId) {
+              return log.error('Could not fetch app id from serial.', err);
+            }
+
+            var msg = {
+              filters: data.filters,
+              appId: appId
+            };
+
+            push.send([
+              channel,
+              wireutil.transaction(
+                  responseChannel,
+                  new wire.LogcatStartMessage(msg))
+            ]);
+            push.send([
+              channel,
+              wireutil.transaction(
+                  responseChannel,
+                  new wire.ViewBridgeStartMessage(msg))
+            ]);
+          });
         })
-        .on('logcat.stop', function(channel, responseChannel) {
-          joinChannel(responseChannel)
-          push.send([
-            channel
-          , wireutil.transaction(
-              responseChannel
-            , new wire.LogcatStopMessage()
-            )
-          ])
+        .on('logcat.stop', function(channel, responseChannel, data) {
+          log.info('Stoping logcat service.');
+          var serial = data.requirements.serial.value;
+          dbapi.getAppIdBySerial(serial, function(err, appId) {
+            if (err || !appId) {
+              return log.error('Could not fetch app id from serial.', err);
+            }
+
+            joinChannel(responseChannel);
+            push.send([
+              channel,
+              wireutil.transaction(
+                  responseChannel,
+                  new wire.LogcatStopMessage({appId: appId}))
+            ]);
+            push.send([
+              channel,
+              wireutil.transaction(
+                  responseChannel,
+                  new wire.ViewBridgeStopMessage({appId: appId}))
+            ]);
+          });
         })
         .on('connect.start', function(channel, responseChannel) {
           joinChannel(responseChannel)

@@ -1,6 +1,99 @@
-div(ng-controller='ControlPanesHotKeysCtrl').fill-height
-  div(ng-if='!$root.basicMode && !$root.standalone')
-    div(fa-pane, pane-id='control-device', pane-anchor='west', pane-size='{{remotePaneSize}}', pane-min='200px', pane-max='100% + 2px', pane-handle='4', pane-no-toggle='false')
+mixin rules
+  ul
+    li Don't leave the app (i.e. clicking share/email/home buttons).
+    li Don't click on ads or ad pop-ups (just close/ignore them).
+    li
+      = 'If you accidentally leave the app, go back into it using the Android'
+      = ' app switcher (square icon bottom right on the screen).'
+    li
+      = 'App not working? Click exit, submit your HIT, and email '
+      = '{{hitAccounts.contactEmail}} to let us know it happened.'
+    li
+      = 'If no app launches for you, find any app from the app drawer '
+      = '(bottom middle) and explore it.'
+  h5.widget-bolder Logins (type in the virtual device keyboard)
+  ul.userAccts
+    li If the app has a social login, use these accounts:
+    li Gmail:
+      = ' {{hitAccounts.logins.gmail.username}},'
+      = ' password: {{hitAccounts.logins.gmail.password}}'
+    li Facebook:
+      = ' {{hitAccounts.logins.facebook.username}},'
+      = ' password: {{hitAccounts.logins.facebook.password}}'
+    li Twitter:
+      = ' {{hitAccounts.logins.twitter.username}},'
+      = ' password: {{hitAccounts.logins.twitter.password}}'
+    li Otherwise create a dummy account
 
+div(ng-controller='CrowdFeedbackCtrl').fill-height
+  div(ng-if='!$root.basicMode && !$root.standalone')
+    div(fa-pane, pane-id='control-device', pane-anchor='west',
+    pane-size='{{remotePaneSize}}', pane-min='622px',
+    pane-max='100% + 2px', pane-handle='4', pane-no-toggle='false')
       .remote-control
-        div(ng-include='"control-panes/device-control/device-control.jade"').fill-height
+        .fill-height(
+        ng-include='"control-panes/device-control/device-control.jade"')
+    .crowd-ui(fa-pane)
+      .widget-container.fluid-height
+        .heading-for-tabs.tabs
+          .tab-content
+            .tab-pane.active
+              .row
+                .col-xs-12
+                  .widget-container.fluid-height
+                    .heading
+                      h3 CrowdSTF
+                    .heading
+                      span.fa-stack.fa-lgX.stf-stacked-icon(
+                      icon='fa-th-large', color='color-lila')
+                        i.fa.fa-square.fa-stack-2x.color-lila(
+                        ng-class='color')
+                        i.fa.fa-stack-1x.fa-inverse.fa-th-large(
+                        ng-class='icon')
+                      span(translate='translate')
+                        span(ng-show='!appId') App Navigator
+                        span(ng-show='appId') App:
+                          span.app-header {{' ' + appId}}
+                      .clearfix
+              .row
+                .col-xs-12
+                  .widget-container.fluid-height.stf-remote-debug
+                    .heading
+                      span.fa-stack.fa-lgX.stf-stacked-icon(
+                      icon='fa-hourglass', color='color-blue')
+                        i.fa.fa-square.fa-stack-2x.color-blue(
+                        ng-class='color')
+                        i.fa.fa-stack-1x.fa-inverse.fa-hourglass(
+                        ng-class='icon')
+                      span(translate='translate')
+                        span Task Time: {{taskTime}} Minutes
+                    .widget-content.padded
+                      .form-inline
+                        textarea.form-control.remote-debug-textarea(
+                        readonly='readonly', rows='1',
+                        text-focus-select='text-focus-select')
+                          = 'Time Remaining: {{minutes}} minutes, {{seconds}}'
+                          = ' seconds'
+              .row
+                .col-xs-12
+                  .widget-container.fluid-height.stf-remote-debug
+                    .heading
+                      span.fa-stack.fa-lgX.stf-stacked-icon(
+                      icon='fa-comment', color='color-yellow')
+                        i.fa.fa-square.fa-stack-2x.color-yellow(
+                        ng-class='color')
+                        i.fa.fa-stack-1x.fa-inverse.fa-comment(
+                        ng-class='icon')
+                      span(translate='translate')
+                        span Guide
+                    .widget-content.padded
+                      h5.widget-bolder Rules
+                      +rules
+                      h5.widget-bolder Help
+                      ul.userAccts
+                        li Please contact
+                          a(href='mailto:{{hitAccounts.contactEmail}}')
+                            =' {{hitAccounts.contactEmail}} '
+                          | for errors or HIT questions
+                    .submit-area.hit
+                      a.exitSession(ng-click='exitSession()') Exit

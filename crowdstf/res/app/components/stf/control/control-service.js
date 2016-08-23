@@ -28,6 +28,10 @@ module.exports = function ControlServiceFactory(
     }
 
     function sendTwoWay(action, data) {
+      var hashArr = window.location.hash.split('/');
+      if (hashArr.length >= 3) {
+        data.serial = hashArr[2];
+      }
       var tx = TransactionService.create(target)
       socket.emit(action, channel, tx.channel, data)
       return tx.promise

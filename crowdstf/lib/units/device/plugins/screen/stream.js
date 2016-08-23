@@ -19,8 +19,8 @@ var StateQueue = require('../../../../util/statequeue')
 var RiskyStream = require('../../../../util/riskystream')
 var FailCounter = require('../../../../util/failcounter')
 
-const FINAL_DEVICE_CAPTURE_WIDTH = 1080;
-const FINAL_DEVICE_CAPTURE_HEIGHT = 1920;
+const FINAL_DEVICE_CAPTURE_WIDTH = 1080 / 2;
+const FINAL_DEVICE_CAPTURE_HEIGHT = 1920 / 2;
 
 module.exports = syrup.serial()
   .dependency(require('../../support/adb'))
