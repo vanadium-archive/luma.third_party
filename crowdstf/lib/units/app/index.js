@@ -78,10 +78,6 @@ module.exports = function(options) {
   , keys: [options.secret]
   }))
 
-  app.get('/task-end', function(req, res) {
-    res.render('taskend', {contactEmail: config.hitAccounts.contactEmail});
-  });
-
   app.use(auth({
     secret: options.secret
   , authUrl: options.authUrl

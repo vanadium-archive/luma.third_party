@@ -27,10 +27,11 @@ var deviceEventStore = new DeviceEventStore();
 var layoutCaptureService = require('./layoutcaptureservice')
 
 const START_LOGCAT_DELIM = 'RicoBegin';
-const START_DELIM_CHAR = START_LOGCAT_DELIM.substr(0, 1);
 const END_LOGCAT_DELIM = 'RicoEnd';
-const START_DELIM_LEN = START_LOGCAT_DELIM.length;
 const VIEW_JSON_END_DELIMITER = 'RICO_JSON_END';
+const VIEW_REQ_XMIT_TIMEOUT = 1000;
+const VIEW_REQ_ERR_MSG = 'Err:View hierarchy request exceeded ' +
+  VIEW_REQ_XMIT_TIMEOUT + 'ms.';
 
 module.exports = function(options) {
   var log = logger.createLogger('websocket')
@@ -40,8 +41,8 @@ module.exports = function(options) {
       , transports: ['websocket']
       })
   var channelRouter = new events.EventEmitter()
-  var viewHierarchyJSON = '';
-  var viewResHandler = null;
+  var deviceViewJson = {};
+  var viewResHandlers = {};
 
   // Output
   var push = zmqutil.socket('push')
@@ -238,9 +239,22 @@ module.exports = function(options) {
         }
       })
       .on(wire.DeviceViewBridgeEntryMessage, function(channel, message) {
-        viewHierarchyJSON += message.message;
+        deviceViewJson[message.serial] = (deviceViewJson[message.serial] || '')
+            + message.message;
         if (message.message.indexOf(VIEW_JSON_END_DELIMITER) > -1) {
-          viewResHandler(viewHierarchyJSON);
+          // Check if the response handler hung up due to timeout.
+          if(message.serial && viewResHandlers[message.serial]) {
+            // Stash a reference to the handler.
+            var viewResHandler = viewResHandlers[message.serial];
+
+            // Ready the handlers for the next handler.
+            viewResHandlers[message.serial] = null;
+
+            // Invoke the save response defined in the gesture.
+            viewResHandler(deviceViewJson[message.serial]);
+          } else {
+            log.warn('Ignoring view response for serial %s', message.serial);
+          }
         }
       })
       .on(wire.AirplaneModeEvent, function(channel, message) {
@@ -540,8 +554,9 @@ module.exports = function(options) {
               ))
             ]);
           }, function(callback) {
-            viewHierarchyJSON = '';
-            viewResHandler = function(viewHierarchy) {
+            deviceViewJson[data.serial] = '';
+
+            viewResHandlers[data.serial] = function(viewHierarchy) {
               data.viewHierarchy = viewHierarchy;
               deviceEventStore.storeEvent('input.gestureStart', data);
               callback();
@@ -550,9 +565,24 @@ module.exports = function(options) {
             // Send a request to the TCP view bridge.
             push.send([channel,
               wireutil.envelope(new wire.ViewBridgeGetMessage(
-                  data.imgId.split('_')[1]
+                  data.imgId.split('_')[1],
+                  data.serial
               ))
             ]);
+
+            // If we don't hear back from the device's view hierarchy service,
+            // ignore the request, log a warning, and move on.
+            setTimeout(function noResponse(){
+              if (viewResHandlers[data.serial]) {
+                log.warn('View hierarchy response timed out, ' +
+                  'skipping request.');
+                var viewResHandler = viewResHandlers[data.serial];
+                viewResHandlers[data.serial] = null;
+
+                // Invoke the gesture save with an error message.
+                viewResHandler(VIEW_REQ_ERR_MSG);
+              }
+            }, VIEW_REQ_XMIT_TIMEOUT);
           }, data.serial);
         })
         .on('input.gestureStop', function(channel, data) {

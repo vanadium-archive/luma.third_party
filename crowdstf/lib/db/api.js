@@ -1,5 +1,6 @@
 var r = require('rethinkdb')
 var util = require('util')
+var Promise = require('bluebird');
 
 var db = require('./')
 var wireutil = require('../wire/util')
@@ -433,10 +434,20 @@ dbapi.expireToken = function(token) {
   }).then(function() {
     return dbapi.deleteUser(token);
   }).then(function() {
-    return dbapi.publishKickedSerial(serial);
+    if (serial) {
+      return dbapi.publishKickedSerial(serial);
+    } else {
+      // End the chain early.
+      return Promise.resolve();
+    }
   }).then(function() {
-    return dbapi.unsetDeviceOwner(serial);
-  });
+    if (serial) {
+      return dbapi.unsetDeviceOwner(serial);
+    } else {
+      // End the chain.
+      return Promise.resolve();
+    }
+  })
 };
 
 module.exports = dbapi

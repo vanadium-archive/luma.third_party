@@ -16,6 +16,7 @@ var pathutil = require('../../util/pathutil');
 var urlutil = require('../../util/urlutil');
 var lifecycle = require('../../util/lifecycle');
 var dbapi = require('../../db/api');
+var config = require('../../../config');
 
 const JWT_EXPIRE_LENGTH = 24 * 3600;
 const DEFAULT_EXPIRE_MINS = 5.0;
@@ -25,6 +26,11 @@ module.exports = function(options) {
   var log = logger.createLogger('auth-token');
   var app = express();
   var server = Promise.promisifyAll(http.createServer(app));
+
+  // The auth module usually redirects, but use jade to display configurable
+  // logout & session end messaging.
+  app.set('view engine', 'jade');
+  app.set('views', pathutil.resource('app/views'));
 
   lifecycle.observe(function() {
     log.info('Waiting for client connections to end');
@@ -77,7 +83,9 @@ module.exports = function(options) {
     res.clearCookie('XSRF-TOKEN');
     res.clearCookie('ssid');
     res.clearCookie('ssid.sig');
-    res.redirect('/task-end');
+
+    // Show token expiration messaging.
+    res.render('taskend', {contactEmail: config.hitAccounts.contactEmail});
   };
 
   app.get('/auth/token', resetSession);
@@ -149,7 +157,7 @@ module.exports = function(options) {
         }
       }).catch(function(err) {
         log.error('Failed to load token "%s": ', token, err.stack);
-        return res.redirect('/task-end');
+        return res.redirect('/auth/token');
       });
     } else {
       return res.status(400).json({

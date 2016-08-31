@@ -402,6 +402,7 @@ message ViewBridgeStopMessage {
 
 message ViewBridgeGetMessage {
   optional string seq = 1;
+  required string serial = 2;
 }
 
 message LogcatApplyFiltersMessage {

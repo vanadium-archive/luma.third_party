@@ -55,8 +55,8 @@ module.exports = syrup.serial()
                     log.info('Starting view bridge.');
                     return openViewBridge(options.serial);
                   })
-                  .then(function(logcat) {
-                    activeViewBridge = logcat;
+                  .then(function(viewBridge) {
+                    activeViewBridge = viewBridge;
 
                     function entryListener(entry) {
                       try {

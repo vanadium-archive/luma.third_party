@@ -55,11 +55,12 @@ LayoutCaptureService.prototype.checkStartCaptures = function(serial) {
         if (eventActionObj.wireEvent === wire.GestureStartMessage) {
           eventActionObj.fetchView(function(err, layoutJSON) {
             if (err) {
-              console.error(err);
+              log.error('Fetch view failed for serial %s:', serial, err);
             } else {
               eventActionObj.actionFn(layoutJSON);
-              nextItem();
             }
+
+            nextItem();
           });
         } else {
           eventActionObj.actionFn();
