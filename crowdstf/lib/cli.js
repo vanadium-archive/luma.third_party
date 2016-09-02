@@ -593,6 +593,51 @@ program
     })
   })
 
+// Start the service for token-based authentication.
+// Hard coded values follow OpenSTF pattern above.
+program
+    .command('auth-token')
+    .description('start token auth client')
+    .option('-p, --port <port>',
+        'port (or $PORT)',
+        Number,
+        process.env.PORT || 7120)
+    .option('-s, --secret <secret>', 'secret (or $SECRET)',
+        String, process.env.SECRET)
+    .option('-i, --ssid <ssid>', 'session SSID (or $SSID)', String,
+        process.env.SSID || 'ssid')
+    .option('-a, --app-url <url>', 'URL to app', String)
+    .option('--use-basic-auth',
+        'Whether to use basic authentication for login or not')
+    .option('--basic-auth-username <username>',
+        'Basic Auth Username (or $BASIC_AUTH_USERNAME)', String,
+        process.env.BASIC_AUTH_USERNAME || 'username')
+    .option('--basic-auth-password <password>',
+        'Basic Auth Password (or $BASIC_AUTH_PASSWORD)', String,
+        process.env.BASIC_AUTH_PASSWORD || 'password')
+    .action(function(options) {
+      if (!options.secret) {
+        this.missingArgument('--secret');
+      }
+      if (!options.appUrl) {
+        this.missingArgument('--app-url');
+      }
+
+      require('./units/auth/token')({
+        port: options.port,
+        secret: options.secret,
+        ssid: options.ssid,
+        appUrl: options.appUrl,
+        mock: {
+          useBasicAuth: options.useBasicAuth,
+          basicAuth: {
+            username: options.basicAuthUsername,
+            password: options.basicAuthPassword
+          }
+        }
+      });
+    });
+
 program
   .command('auth-openid')
   .description('start openid auth client')
@@ -1073,10 +1118,10 @@ program
     , 'device pull endpoint'
     , String
     , 'tcp://127.0.0.1:7116')
-  .option('--auth-type <mock|ldap|oauth2|saml2|openid>'
+  .option('--auth-type <mock|ldap|oauth2|saml2|openid|token>'
     , 'auth type'
     , String
-    , 'mock')
+    , 'token')
   .option('-a, --auth-url <url>'
     , 'URL to auth client'
     , String)
