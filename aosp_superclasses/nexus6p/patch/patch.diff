@@ -1,0 +1,34 @@
+
+project frameworks/base/
+diff --git a/core/java/android/view/View.java b/core/java/android/view/View.java
+index 720d9a8..abc02fa 100644
+--- a/core/java/android/view/View.java
++++ b/core/java/android/view/View.java
+@@ -7366,6 +7366,18 @@ public class View implements Drawable.Callback, KeyEvent.Callback,
+         return getFitsSystemWindows();
+     }
+ 
++    /** @hide */
++    @ViewDebug.ExportedProperty
++    public String ancestorClasses() {
++        Class curClass = this.getClass();
++        String retVal = curClass.getName();
++        while (curClass != null) {
++            retVal += ',' + curClass.getName();
++            curClass = curClass.getSuperclass();
++        }
++        return retVal;
++    }
++
+     /**
+      * Ask that a new dispatch of {@link #fitSystemWindows(Rect)} be performed.
+      * @deprecated Use {@link #requestApplyInsets()} for newer platform versions.
+@@ -22528,6 +22540,8 @@ public class View implements Drawable.Callback, KeyEvent.Callback,
+         stream.addProperty("misc:enabled", isEnabled());
+         stream.addProperty("misc:soundEffectsEnabled", isSoundEffectsEnabled());
+         stream.addProperty("misc:hapticFeedbackEnabled", isHapticFeedbackEnabled());
++        stream.addProperty("misc:ancestorClasses", ancestorClasses());
++
+ 
+         // theme attributes
+         Resources.Theme theme = getContext().getTheme();

@@ -1,0 +1,12 @@
+URL: https://android.googlesource.com/platform/frameworks/base/+archive/3df0241cc1b7b97c75be26ac5d30f20f9d7cf98e.tar.gz
+Version:  3df0241cc1b7b97c75be26ac5d30f20f9d7cf98e
+License: Apache License, Version 2.0
+License File: LICENSE
+
+Description:
+frameworks/base repository of the AOSP source code for Nexus 6P phones
+(android-6.0.1_r45)
+
+Local Modifications:
+Added a method that returns a View's superclasses, configured the build to
+export the ancestor classes in ViewDebug dumps.
